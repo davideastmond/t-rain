@@ -64,6 +64,13 @@ export const FOREST_PERCENT = 15;
 /** Approximate share of tiles generated as water. */
 export const WATER_PERCENT = 10;
 
+/**
+ * A generated board is only accepted if a crossing flood fill (see board.ts)
+ * reaches at least this many tiles on the far back row. Boards that fail are
+ * re-rolled, so water can never seal the board or leave it a single doorway.
+ */
+export const MIN_CROSSING_ENTRIES = 3;
+
 // --- Characters -------------------------------------------------------------
 
 /**
