@@ -17,7 +17,7 @@ A 2-player, turn-based race across a randomly generated board. Read the terrain,
 ## Terrain Generation
 - Generated randomly at the start of every game; every game is unique.
 - Generation is mirrored (180° rotational symmetry): both players face the same terrain, flipped. A purely random board could give one side open plains and the other a wall of water.
-- Generation guarantees at least a few fully passable routes across the board, so Water can never seal it.
+- Generation guarantees crossing routes, so Water can never seal the board. The precise check (implemented in Step 2): a flood fill from every passable tile on one back row must reach at least 3 tiles on the opposite back row. If a generated board fails the check, generation retries with the next draws from the same seeded random stream — the result is still fully determined by the seed.
 - Terrain types for v1 (designed as an expandable table: type → movement cost, passable?):
 
   | Type | Cost to enter | Passable | Share (tunable) |
