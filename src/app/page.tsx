@@ -11,8 +11,11 @@
 // click and shows the reason when the answer is no, so the UI and the
 // rules can never drift apart.
 //
-// Movement is Step 5 — once both sides are set up, this screen shows the
-// finished setup and who moves first.
+// Step 5 adds play: once both sides are set up, the current player clicks
+// one of their pieces and steps it tile by tile (src/lib/game/movement.ts).
+// Play is hotseat-style for now — both sides move on this screen, and trap
+// visibility follows whose turn it is, the same filter an online client
+// would apply.
 
 import { useMemo, useState } from "react";
 
@@ -20,10 +23,21 @@ import Board, { tileKey } from "@/components/Board";
 import {
   CHARACTERS,
   MAX_NEUTRAL_TRAPS,
+  MAX_POINTS_PER_PIECE_PER_TURN,
+  MOVEMENT_POINTS_PER_TURN,
   NEUTRAL_ROW,
   PIECES_PER_PLAYER,
+  PIECES_TO_WIN,
   TRAPS_PER_PLAYER,
 } from "@/lib/game/constants";
+import {
+  endTurn,
+  getPiece,
+  legalStepTargets,
+  movePieceStep,
+  pieceAt,
+  type MoveError,
+} from "@/lib/game/movement";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
 import {
   ALL_CHARACTERS,
@@ -62,7 +76,23 @@ const ERROR_MESSAGES: Record<SetupError, string> = {
   "on-water": "Nothing can be placed on water.",
 };
 
+const MOVE_ERROR_MESSAGES: Record<MoveError, string> = {
+  "wrong-phase": "The game isn't being played right now.",
+  "piece-not-found": "That piece doesn't exist.",
+  "piece-not-active": "That piece is no longer on the board.",
+  "not-your-turn": "That piece belongs to the other player.",
+  "not-adjacent": "Pieces step one tile up, down, left, or right.",
+  "on-water": "Pieces can't enter water.",
+  occupied: "That tile is occupied — pieces block each other.",
+  "exceeds-piece-cap": `A piece can spend at most ${MAX_POINTS_PER_PIECE_PER_TURN} points per turn.`,
+  "insufficient-points": "Not enough movement points left in this turn's pool.",
+};
+
 type Mode = "pieces" | "traps";
+
+function playerLabel(player: PlayerId): string {
+  return player === "north" ? "North" : "South";
+}
 
 export default function Home() {
   const [seedText, setSeedText] = useState(String(FIRST_SEED));
@@ -75,10 +105,16 @@ export default function Home() {
   >({});
   const [draftTraps, setDraftTraps] = useState<Position[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
 
   const palette = BIOME_PALETTES[game.biome];
   const southApplied = game.pieces.some((p) => p.owner === LOCAL_PLAYER);
+  const inSetup = game.phase === "setup";
   const playing = game.phase === "playing";
+  const finished = game.phase === "finished";
+  const selectedPiece = selectedPieceId
+    ? getPiece(game, selectedPieceId)
+    : undefined;
 
   const draftPieceCount = Object.keys(draftPieces).length;
   const neutralTrapCount = draftTraps.filter((p) => p.y === NEUTRAL_ROW).length;
@@ -101,22 +137,38 @@ export default function Home() {
   }, [game.pieces, southApplied, draftPieces]);
 
   const displayTraps: Trap[] = useMemo(() => {
-    if (southApplied) {
-      return game.traps.filter((t) => t.owner === LOCAL_PLAYER || t.triggered);
+    if (!southApplied) {
+      return draftTraps.map((position) => ({
+        owner: LOCAL_PLAYER,
+        position,
+        triggered: false,
+      }));
     }
-    return draftTraps.map((position) => ({
-      owner: LOCAL_PLAYER,
-      position,
-      triggered: false,
-    }));
-  }, [game.traps, southApplied, draftTraps]);
+    // While waiting to start, you (South) review your own traps. During
+    // play, visibility follows the turn: the player to move sees their own
+    // untriggered traps, and everyone sees triggered ones (they're public
+    // once they've fired).
+    const visibleOwner = inSetup ? LOCAL_PLAYER : game.currentPlayer;
+    return game.traps.filter((t) => t.owner === visibleOwner || t.triggered);
+  }, [game.traps, game.currentPlayer, inSetup, southApplied, draftTraps]);
 
   // Tiles the current mode may legally use light up. Computed by asking
   // the engine about every candidate tile — no placement rule is repeated
   // in this file.
   const highlighted = useMemo(() => {
     const keys = new Set<string>();
-    if (southApplied || playing) return keys;
+
+    // During play, highlight where the selected piece may step — straight
+    // from the engine's legalStepTargets, so the glow *is* the rule set.
+    if (playing) {
+      if (selectedPieceId) {
+        for (const target of legalStepTargets(game, selectedPieceId)) {
+          keys.add(tileKey(target));
+        }
+      }
+      return keys;
+    }
+    if (southApplied) return keys;
 
     if (mode === "pieces") {
       const others = ALL_CHARACTERS.filter(
@@ -141,6 +193,7 @@ export default function Home() {
     game,
     mode,
     selectedCharacter,
+    selectedPieceId,
     draftPieces,
     draftTraps,
     southApplied,
@@ -155,6 +208,7 @@ export default function Home() {
     setSelectedCharacter("cat");
     setMode("pieces");
     setMessage(null);
+    setSelectedPieceId(null);
   }
 
   function onSeedSubmit(event: React.FormEvent) {
@@ -252,7 +306,75 @@ export default function Home() {
       return;
     }
     setGame(result.state);
-    setMessage(null);
+    setMessage(
+      `${playerLabel(result.state.currentPlayer)} moves first — click one of their pieces, then a glowing tile to step.`,
+    );
+  }
+
+  // --- Play (Step 5) --------------------------------------------------------
+
+  function handlePlayClick(position: Position) {
+    if (!playing) return;
+
+    // Clicking one of the current player's pieces selects it — including
+    // switching selection from another piece.
+    const clicked = pieceAt(game, position);
+    if (clicked && clicked.owner === game.currentPlayer) {
+      setSelectedPieceId(clicked.id);
+      setMessage(null);
+      return;
+    }
+
+    if (!selectedPieceId || !selectedPiece) {
+      setMessage(
+        `Select one of ${playerLabel(game.currentPlayer)}'s pieces first.`,
+      );
+      return;
+    }
+
+    const result = movePieceStep(game, selectedPieceId, position);
+    if (!result.ok) {
+      setMessage(MOVE_ERROR_MESSAGES[result.error]);
+      return;
+    }
+    setGame(result.state);
+
+    const who = `${CHARACTERS[selectedPiece.character].emoji} ${playerLabel(selectedPiece.owner)} ${CHARACTERS[selectedPiece.character].label}`;
+    if (result.outcome.eliminated) {
+      setSelectedPieceId(null);
+      setMessage(
+        result.state.phase === "finished"
+          ? `💥 ${who} stepped on a trap — and that ends the game!`
+          : `💥 ${who} stepped on a trap and was eliminated! The trap is now revealed.`,
+      );
+    } else if (result.outcome.scored) {
+      setSelectedPieceId(null);
+      setMessage(
+        result.state.phase === "finished"
+          ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}!`
+          : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.`,
+      );
+    } else {
+      setMessage(null);
+    }
+  }
+
+  function handleEndTurn() {
+    const result = endTurn(game);
+    if (!result.ok) return;
+    setGame(result.state);
+    setSelectedPieceId(null);
+    setMessage(
+      `${playerLabel(result.state.currentPlayer)}'s turn — ${MOVEMENT_POINTS_PER_TURN} fresh movement points.`,
+    );
+  }
+
+  function handleBoardClick(position: Position) {
+    if (playing) {
+      handlePlayClick(position);
+    } else if (!southApplied) {
+      handleTileClick(position);
+    }
   }
 
   return (
@@ -260,9 +382,11 @@ export default function Home() {
       <header className="text-center">
         <h1 className="text-4xl font-bold tracking-tight">T-rain</h1>
         <p className="mt-1 text-sm text-neutral-400">
-          {playing
-            ? "Setup complete — both armies are on the board."
-            : "Setup: place your pieces and hide your traps."}
+          {finished
+            ? "Game over."
+            : playing
+              ? `First to ${PIECES_TO_WIN} pieces across wins.`
+              : "Setup: place your pieces and hide your traps."}
         </p>
       </header>
 
@@ -380,7 +504,12 @@ export default function Home() {
         pieces={displayPieces}
         traps={displayTraps}
         highlighted={highlighted}
-        onTileClick={southApplied || playing ? undefined : handleTileClick}
+        selectedKey={
+          playing && selectedPiece ? tileKey(selectedPiece.position) : undefined
+        }
+        onTileClick={
+          finished || (southApplied && inSetup) ? undefined : handleBoardClick
+        }
       />
 
       {!playing && !southApplied && (
@@ -414,7 +543,7 @@ export default function Home() {
         </div>
       )}
 
-      {southApplied && !playing && (
+      {southApplied && inSetup && (
         <button
           type="button"
           onClick={startGame}
@@ -424,24 +553,60 @@ export default function Home() {
         </button>
       )}
 
-      {playing && (
-        <section className="flex flex-col items-center gap-2 text-center">
+      {(playing || finished) && (
+        <section className="flex flex-col items-center gap-3 text-center">
           <p className="text-lg">
             <span style={{ color: PLAYER_COLORS.north }} className="font-bold">
               North {game.scores.north}
             </span>
-            {" · "}
+            <span className="text-neutral-500"> / {PIECES_TO_WIN} · </span>
             <span style={{ color: PLAYER_COLORS.south }} className="font-bold">
               South {game.scores.south}
             </span>
+            <span className="text-neutral-500"> / {PIECES_TO_WIN}</span>
           </p>
-          <p className="text-sm text-neutral-300">
-            {game.currentPlayer === LOCAL_PLAYER ? "You move" : "North moves"}{" "}
-            first. Your{" "}
-            {game.traps.filter((t) => t.owner === LOCAL_PLAYER).length} traps
-            are hidden on the board; North&rsquo;s are hidden from you. Movement
-            arrives in Step 5.
-          </p>
+
+          {finished ? (
+            <p className="text-xl font-bold">
+              🏆 {game.winner ? playerLabel(game.winner) : ""} wins the game!
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-neutral-300">
+                <span
+                  className="font-semibold"
+                  style={{ color: PLAYER_COLORS[game.currentPlayer] }}
+                >
+                  {playerLabel(game.currentPlayer)}
+                </span>{" "}
+                to move · Movement points:{" "}
+                <span className="font-mono font-semibold">
+                  {game.movementPointsLeft}/{MOVEMENT_POINTS_PER_TURN}
+                </span>
+                {selectedPiece && (
+                  <>
+                    {" "}
+                    · {CHARACTERS[selectedPiece.character].emoji}{" "}
+                    {CHARACTERS[selectedPiece.character].label} selected, spent{" "}
+                    {game.spentThisTurn[selectedPiece.id] ?? 0}/
+                    {MAX_POINTS_PER_PIECE_PER_TURN}
+                  </>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={handleEndTurn}
+                className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+              >
+                End turn ⏭
+              </button>
+              <p className="max-w-md text-xs text-neutral-500">
+                Hotseat for now: both sides play on this screen, and trap
+                visibility follows whose turn it is — the player to move sees
+                only their own untriggered traps.
+              </p>
+            </>
+          )}
           <p className="text-xs text-neutral-500">
             Board seed {game.seed} · {palette.label} biome
           </p>

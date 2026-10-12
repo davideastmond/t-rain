@@ -12,7 +12,7 @@ A 2-player, turn-based race across a randomly generated board. Read the terrain,
 - North zone: y 0–14 (15 rows, 450 tiles).
 - Neutral row: y 15 (1 row, 30 tiles).
 - South zone: y 16–30 (15 rows, 450 tiles).
-- South's goal row is y 0; North's goal row is y 30. A piece that enters the goal row scores ("across") and is removed from the board.
+- South's goal row is y 0; North's goal row is y 30. A piece that enters the goal row scores ("across") and is removed from the board. Exception (decided during Step 5 implementation): traps resolve on entry *before* scoring, so a piece that steps onto a trapped goal-row tile is eliminated and does not score.
 
 ## Terrain Generation
 - Generated randomly at the start of every game; every game is unique.

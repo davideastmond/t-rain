@@ -29,6 +29,8 @@ interface BoardProps {
   pieces?: Piece[];
   traps?: Trap[];
   highlighted?: Set<string>;
+  /** Tile key ("x,y") of the currently selected piece, drawn with a white ring. */
+  selectedKey?: string;
   onTileClick?: (position: Position) => void;
 }
 
@@ -38,6 +40,7 @@ export default function Board({
   pieces = [],
   traps = [],
   highlighted,
+  selectedKey,
   onTileClick,
 }: BoardProps) {
   const palette = BIOME_PALETTES[biome];
@@ -89,7 +92,11 @@ export default function Board({
           >
             {piece && (
               <span
-                className="absolute inset-[4%] flex items-center justify-center rounded-full text-[20px] leading-none ring-1 ring-black/60"
+                className={`absolute inset-[4%] flex items-center justify-center rounded-full text-[20px] leading-none ${
+                  selectedKey === tileKey(tile.position)
+                    ? "ring-4 ring-white"
+                    : "ring-1 ring-black/60"
+                }`}
                 style={{ backgroundColor: PLAYER_COLORS[piece.owner] }}
                 title={`${piece.owner === "north" ? "North" : "South"} ${CHARACTERS[piece.character].label}`}
               >
