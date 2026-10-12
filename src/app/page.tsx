@@ -106,6 +106,7 @@ export default function Home() {
   const [draftTraps, setDraftTraps] = useState<Position[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
+  const [turnCount, setTurnCount] = useState(0);
 
   const palette = BIOME_PALETTES[game.biome];
   const southApplied = game.pieces.some((p) => p.owner === LOCAL_PLAYER);
@@ -209,6 +210,7 @@ export default function Home() {
     setMode("pieces");
     setMessage(null);
     setSelectedPieceId(null);
+    setTurnCount(0);
   }
 
   function onSeedSubmit(event: React.FormEvent) {
@@ -364,6 +366,7 @@ export default function Home() {
     if (!result.ok) return;
     setGame(result.state);
     setSelectedPieceId(null);
+    setTurnCount((count) => count + 1);
     setMessage(
       `${playerLabel(result.state.currentPlayer)}'s turn — ${MOVEMENT_POINTS_PER_TURN} fresh movement points.`,
     );
@@ -567,9 +570,88 @@ export default function Home() {
           </p>
 
           {finished ? (
-            <p className="text-xl font-bold">
-              🏆 {game.winner ? playerLabel(game.winner) : ""} wins the game!
-            </p>
+            <>
+              <p className="text-2xl font-bold">
+                🏆{" "}
+                <span
+                  style={{
+                    color: game.winner
+                      ? PLAYER_COLORS[game.winner]
+                      : undefined,
+                  }}
+                >
+                  {game.winner ? playerLabel(game.winner) : ""}
+                </span>{" "}
+                wins the game!
+              </p>
+              <p className="max-w-md text-sm text-neutral-300">
+                {game.winner && game.scores[game.winner] >= PIECES_TO_WIN
+                  ? `${PIECES_TO_WIN} pieces crossed the board — settled in ${turnCount} turns.`
+                  : `Settled by attrition in ${turnCount} turns: the loser dropped below ${PIECES_TO_WIN} pieces still able to score.`}
+              </p>
+              <div className="flex flex-wrap justify-center gap-3 text-sm">
+                {(["north", "south"] as PlayerId[]).map((player) => (
+                  <div
+                    key={player}
+                    className="flex flex-col items-center gap-0.5 rounded-lg bg-neutral-900 px-5 py-3"
+                  >
+                    <span
+                      className="font-semibold"
+                      style={{ color: PLAYER_COLORS[player] }}
+                    >
+                      {playerLabel(player)}
+                    </span>
+                    <span>🎉 {game.scores[player]} crossed</span>
+                    <span>
+                      💥{" "}
+                      {
+                        game.pieces.filter(
+                          (p) =>
+                            p.owner === player && p.status === "eliminated",
+                        ).length
+                      }{" "}
+                      eliminated
+                    </span>
+                    <span>
+                      🐾{" "}
+                      {
+                        game.pieces.filter(
+                          (p) => p.owner === player && p.status === "active",
+                        ).length
+                      }{" "}
+                      still on the board
+                    </span>
+                    <span>
+                      🪤{" "}
+                      {
+                        game.traps.filter(
+                          (t) => t.owner === player && t.triggered,
+                        ).length
+                      }{" "}
+                      traps fired
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    newGame(Math.floor(Math.random() * 1_000_000_000))
+                  }
+                  className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                >
+                  🔄 Rematch — new board
+                </button>
+                <button
+                  type="button"
+                  onClick={() => newGame(game.seed)}
+                  className="rounded-full bg-neutral-800 px-5 py-2 text-sm transition hover:bg-neutral-700"
+                >
+                  ↩ Replay this board
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <p className="text-sm text-neutral-300">
