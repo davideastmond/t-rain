@@ -18,6 +18,14 @@ import { useMemo, useState } from "react";
 
 import Board, { tileKey } from "@/components/Board";
 import {
+  CHARACTERS,
+  MAX_NEUTRAL_TRAPS,
+  NEUTRAL_ROW,
+  PIECES_PER_PLAYER,
+  TRAPS_PER_PLAYER,
+} from "@/lib/game/constants";
+import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
+import {
   ALL_CHARACTERS,
   applySetup,
   autoPlaceSetup,
@@ -28,14 +36,6 @@ import {
   isInTrapZone,
   type SetupError,
 } from "@/lib/game/setup";
-import {
-  CHARACTERS,
-  MAX_NEUTRAL_TRAPS,
-  NEUTRAL_ROW,
-  PIECES_PER_PLAYER,
-  TRAPS_PER_PLAYER,
-} from "@/lib/game/constants";
-import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
 import {
   type CharacterId,
   type GameState,
@@ -68,7 +68,8 @@ export default function Home() {
   const [seedText, setSeedText] = useState(String(FIRST_SEED));
   const [game, setGame] = useState<GameState>(() => createGame(FIRST_SEED));
   const [mode, setMode] = useState<Mode>("pieces");
-  const [selectedCharacter, setSelectedCharacter] = useState<CharacterId>("cat");
+  const [selectedCharacter, setSelectedCharacter] =
+    useState<CharacterId>("cat");
   const [draftPieces, setDraftPieces] = useState<
     Partial<Record<CharacterId, Position>>
   >({});
@@ -82,7 +83,8 @@ export default function Home() {
   const draftPieceCount = Object.keys(draftPieces).length;
   const neutralTrapCount = draftTraps.filter((p) => p.y === NEUTRAL_ROW).length;
   const setupComplete =
-    draftPieceCount === PIECES_PER_PLAYER && draftTraps.length === TRAPS_PER_PLAYER;
+    draftPieceCount === PIECES_PER_PLAYER &&
+    draftTraps.length === TRAPS_PER_PLAYER;
 
   // What the board draws: your drafts while you are placing, the real game
   // pieces once applied. North's untriggered traps are filtered out here —
@@ -135,7 +137,15 @@ export default function Home() {
       }
     }
     return keys;
-  }, [game, mode, selectedCharacter, draftPieces, draftTraps, southApplied, playing]);
+  }, [
+    game,
+    mode,
+    selectedCharacter,
+    draftPieces,
+    draftTraps,
+    southApplied,
+    playing,
+  ]);
 
   function newGame(nextSeed: number) {
     setGame(createGame(nextSeed));
@@ -246,7 +256,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
       <header className="text-center">
         <h1 className="text-4xl font-bold tracking-tight">T-rain</h1>
         <p className="mt-1 text-sm text-neutral-400">
@@ -299,8 +309,8 @@ export default function Home() {
             </span>
             . Place {PIECES_PER_PLAYER} pieces in your back 3 rows, then{" "}
             {TRAPS_PER_PLAYER} traps in your zone + the neutral row (max{" "}
-            {MAX_NEUTRAL_TRAPS} neutral). Legal tiles are outlined white —
-            click a placed piece to pick it back up.
+            {MAX_NEUTRAL_TRAPS} neutral). Legal tiles are outlined white — click
+            a placed piece to pick it back up.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -427,9 +437,10 @@ export default function Home() {
           </p>
           <p className="text-sm text-neutral-300">
             {game.currentPlayer === LOCAL_PLAYER ? "You move" : "North moves"}{" "}
-            first. Your {game.traps.filter((t) => t.owner === LOCAL_PLAYER).length}{" "}
-            traps are hidden on the board; North&rsquo;s are hidden from you.
-            Movement arrives in Step 5.
+            first. Your{" "}
+            {game.traps.filter((t) => t.owner === LOCAL_PLAYER).length} traps
+            are hidden on the board; North&rsquo;s are hidden from you. Movement
+            arrives in Step 5.
           </p>
           <p className="text-xs text-neutral-500">
             Board seed {game.seed} · {palette.label} biome
