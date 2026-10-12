@@ -63,6 +63,28 @@ A 2-player, turn-based race across a randomly generated board. Read the terrain,
 ## Tunable Numbers (expected to change with playtesting)
 Movement pool 10 · per-piece cap 3 · 15 pieces · 5 to win · 10 traps · 3 neutral-trap cap · setup 120s · Forest ~15% · Water ~10%
 
+## Graphics — Colored squares + biomes
+- Direction (revised 2026-10-11, supersedes the earlier Minecraft-style texture idea, dropped for simplicity): tiles are colored squares; no textures or sprite sheets.
+- The board's color scheme comes from a **biome**. Three biomes:
+  1. **Grass / Forest**
+  2. **Desert / Dry**
+  3. **Ice**
+- Biome scope DECIDED (2026-10-11): **one random biome per game, applied to the whole board** — both players see the same scheme, and each new match gets a new theme. The biome is chosen at game creation (it can be derived from the same game seed that generates the terrain layout, so one seed reproduces a whole match setup).
+- Model:
+  - A biome is a palette: a lookup table of terrain type → color. The engine's terrain types (Plains, Forest, Water) and all movement rules stay identical in every biome; only the colors (and flavor names) change. Example:
+
+    | Terrain | Grass/Forest | Desert/Dry | Ice |
+    |---|---|---|---|
+    | Plains | light green | sand tan | snow white / pale blue |
+    | Forest | deep green | dry olive-brown scrub | dark snowy pine teal-green |
+    | Water | blue | blue (oasis) | deep ice blue |
+
+  - Rendering is a DOM/CSS grid: one div per tile, `backgroundColor` from the active biome palette. Pieces, trap markers and move highlights are simple shapes/markers layered on the tile.
+- **Pieces are 15 distinct cute characters** (decided 2026-10-11, superseding the numbered-marker idea): every piece has the same movement restrictions — characters are skins only and imply no abilities (the elephant is not stronger, the soldier does not fight, the alien does not teleport). Each player starts with one of each character — the same set on both sides — shown on a team-colored marker so ownership is the dominant signal and the character is the piece's identity ("North's elephant hit a trap"). The roster:
+  cat 🐱, dog 🐶, horse 🐴, mouse 🐭, spider 🕷️, elephant 🐘, soldier 💂, alien 👽, fox 🦊, bear 🐻, rabbit 🐰, frog 🐸, pig 🐷, owl 🦉, penguin 🐧.
+  In the data model a piece has a `character` from this roster (unique per player), and its id can be derived as e.g. `"north-cat"`. The roster lives in one table (character → display name, emoji) that rendering reads; the engine never branches on character.
+  - A later option (not v1) is letting the biome also tweak generation mix (e.g. less water in Desert); v1 keeps percentages identical across biomes so balance doesn't change with the skin.
+
 ## Build Implication (not yet greenlit)
 Hidden traps make the game hidden-information: a same-screen hotseat mode needs a pass-the-device handoff with the board hidden between setups/turns, and any online mode must be server-authoritative — the server must never send the opponent's untriggered trap locations to a client. A vs-CPU mode avoids the secrecy problem entirely and is the natural first playable for playtesting the numbers above.
 
