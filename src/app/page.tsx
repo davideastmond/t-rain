@@ -246,7 +246,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
       <header className="text-center">
         <h1 className="text-4xl font-bold tracking-tight">T-rain</h1>
         <p className="mt-1 text-sm text-neutral-400">
