@@ -89,7 +89,7 @@ export default function Board({
           >
             {piece && (
               <span
-                className="absolute inset-[8%] flex items-center justify-center rounded-full text-[11px] leading-none ring-1 ring-black/60"
+                className="absolute inset-[4%] flex items-center justify-center rounded-full text-[20px] leading-none ring-1 ring-black/60"
                 style={{ backgroundColor: PLAYER_COLORS[piece.owner] }}
                 title={`${piece.owner === "north" ? "North" : "South"} ${CHARACTERS[piece.character].label}`}
               >
@@ -98,7 +98,7 @@ export default function Board({
             )}
             {trap && (
               <span
-                className="absolute right-0 bottom-0 text-[8px] leading-none"
+                className="absolute right-0 bottom-0 text-[16px] leading-none"
                 title={trap.triggered ? "Triggered trap" : "Trap"}
               >
                 {trap.triggered ? "💥" : "💣"}
