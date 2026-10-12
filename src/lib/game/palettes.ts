@@ -11,7 +11,17 @@
 // forest is dry scrub, ice water is a frozen lake). The underlying terrain
 // type, and its movement cost, never changes — only the paint does.
 
-import type { BiomeId, TerrainType } from "./types";
+import type { BiomeId, PlayerId, TerrainType } from "./types";
+
+/**
+ * Team colours for piece markers. Ownership has to be readable at a glance
+ * in any biome, so these are strong, terrain-unlike colours and the same in
+ * every biome: North is always blue, South is always red.
+ */
+export const PLAYER_COLORS: Record<PlayerId, string> = {
+  north: "#2563eb",
+  south: "#dc2626",
+};
 
 export interface BiomePalette {
   /** Display name of the biome, e.g. "Desert / Dry". */
