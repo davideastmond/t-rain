@@ -116,6 +116,9 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
+  // Bumps on every new game so piece markers remount instead of animating
+  // from the previous game's positions.
+  const [gameId, setGameId] = useState(0);
   const [cpuMode, setCpuMode] = useState(true);
 
   const palette = BIOME_PALETTES[game.biome];
@@ -224,6 +227,7 @@ export default function Home() {
     setMessage(null);
     setSelectedPieceId(null);
     setTurnCount(0);
+    setGameId((id) => id + 1);
   }
 
   function onSeedSubmit(event: React.FormEvent) {
@@ -583,6 +587,7 @@ export default function Home() {
         pieces={displayPieces}
         traps={displayTraps}
         highlighted={highlighted}
+        piecesKey={gameId}
         selectedKey={
           playing && selectedPiece ? tileKey(selectedPiece.position) : undefined
         }
