@@ -16,10 +16,16 @@
 // Play is hotseat-style for now — both sides move on this screen, and trap
 // visibility follows whose turn it is, the same filter an online client
 // would apply.
+//
+// Step 7 adds a CPU opponent: when enabled, North's turns are played by a
+// greedy heuristic (src/lib/game/cpu.ts) that only ever sees the sanitized
+// per-player view — North's untriggered traps stay hidden from you, and the
+// CPU can't see yours.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Board, { tileKey } from "@/components/Board";
+import { chooseCpuStep, sanitizeForPlayer } from "@/lib/game/cpu";
 import {
   CHARACTERS,
   MAX_NEUTRAL_TRAPS,
@@ -61,7 +67,10 @@ import {
 
 const LOCAL_PLAYER: PlayerId = "south";
 const OPPONENT: PlayerId = "north";
+const CPU_PLAYER: PlayerId = "north";
 const FIRST_SEED = 42;
+/** Pause between CPU steps so its turn is watchable, not instantaneous. */
+const CPU_STEP_DELAY_MS = 350;
 
 const ERROR_MESSAGES: Record<SetupError, string> = {
   "wrong-phase": "The game isn't in the setup phase.",
@@ -107,12 +116,14 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
+  const [cpuMode, setCpuMode] = useState(true);
 
   const palette = BIOME_PALETTES[game.biome];
   const southApplied = game.pieces.some((p) => p.owner === LOCAL_PLAYER);
   const inSetup = game.phase === "setup";
   const playing = game.phase === "playing";
   const finished = game.phase === "finished";
+  const cpuTurn = cpuMode && playing && game.currentPlayer === CPU_PLAYER;
   const selectedPiece = selectedPieceId
     ? getPiece(game, selectedPieceId)
     : undefined;
@@ -146,12 +157,14 @@ export default function Home() {
       }));
     }
     // While waiting to start, you (South) review your own traps. During
-    // play, visibility follows the turn: the player to move sees their own
-    // untriggered traps, and everyone sees triggered ones (they're public
-    // once they've fired).
-    const visibleOwner = inSetup ? LOCAL_PLAYER : game.currentPlayer;
+    // hotseat play, visibility follows the turn: the player to move sees
+    // their own untriggered traps, and everyone sees triggered ones
+    // (they're public once they've fired). Against the CPU, visibility is
+    // pinned to you — North's untriggered traps stay hidden all game.
+    const visibleOwner =
+      cpuMode || inSetup ? LOCAL_PLAYER : game.currentPlayer;
     return game.traps.filter((t) => t.owner === visibleOwner || t.triggered);
-  }, [game.traps, game.currentPlayer, inSetup, southApplied, draftTraps]);
+  }, [game.traps, game.currentPlayer, cpuMode, inSetup, southApplied, draftTraps]);
 
   // Tiles the current mode may legally use light up. Computed by asking
   // the engine about every candidate tile — no placement rule is repeated
@@ -374,11 +387,63 @@ export default function Home() {
 
   function handleBoardClick(position: Position) {
     if (playing) {
-      handlePlayClick(position);
+      // Your clicks do nothing while the CPU is mid-turn.
+      if (!cpuTurn) handlePlayClick(position);
     } else if (!southApplied) {
       handleTileClick(position);
     }
   }
+
+  // The CPU plays North's turns for it, one step per tick so you can watch.
+  // Each tick re-reads `game` from the closure (it's a dependency), applies
+  // a single step from the CPU's sanitized view, and lets the re-render
+  // schedule the next one. The timer is cancelled if you start a new game
+  // mid-turn, and the loop stops on its own when the game finishes.
+  useEffect(() => {
+    if (!cpuTurn) return;
+    const timer = window.setTimeout(() => {
+      const step = chooseCpuStep(sanitizeForPlayer(game, CPU_PLAYER), CPU_PLAYER);
+      if (!step) {
+        const done = endTurn(game);
+        if (done.ok) {
+          setGame(done.state);
+          setTurnCount((count) => count + 1);
+          setMessage("North (CPU) ends its turn.");
+        }
+        return;
+      }
+      const result = movePieceStep(game, step.pieceId, step.to);
+      if (!result.ok) {
+        const done = endTurn(game);
+        if (done.ok) {
+          setGame(done.state);
+          setTurnCount((count) => count + 1);
+        }
+        return;
+      }
+      setGame(result.state);
+      setSelectedPieceId(null);
+
+      const piece = getPiece(game, step.pieceId)!;
+      const who = `${CHARACTERS[piece.character].emoji} North ${CHARACTERS[piece.character].label}`;
+      if (result.outcome.eliminated) {
+        setMessage(
+          result.state.phase === "finished"
+            ? `💥 ${who} walked into one of your traps — and that ends the game!`
+            : `💥 ${who} walked into one of your traps and was eliminated!`,
+        );
+      } else if (result.outcome.scored) {
+        setMessage(
+          result.state.phase === "finished"
+            ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}! North wins.`
+            : `🎉 ${who} crossed! North: ${result.state.scores.north}/${PIECES_TO_WIN}.`,
+        );
+      } else {
+        setMessage("North (CPU) is thinking…");
+      }
+    }, CPU_STEP_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [game, cpuMode, playing, cpuTurn]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
@@ -422,6 +487,17 @@ export default function Home() {
             Go to seed
           </button>
         </form>
+        {!playing && !finished && (
+          <label className="flex cursor-pointer items-center gap-2 rounded-full bg-neutral-800 px-3 py-1.5 text-sm select-none">
+            <input
+              type="checkbox"
+              checked={cpuMode}
+              onChange={(event) => setCpuMode(event.target.checked)}
+              className="accent-emerald-500"
+            />
+            🤖 CPU plays North
+          </label>
+        )}
       </div>
 
       {!playing && !southApplied && (
@@ -511,7 +587,9 @@ export default function Home() {
           playing && selectedPiece ? tileKey(selectedPiece.position) : undefined
         }
         onTileClick={
-          finished || (southApplied && inSetup) ? undefined : handleBoardClick
+          finished || (southApplied && inSetup) || cpuTurn
+            ? undefined
+            : handleBoardClick
         }
       />
 
@@ -675,17 +753,23 @@ export default function Home() {
                   </>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={handleEndTurn}
-                className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-              >
-                End turn ⏭
-              </button>
+              {cpuTurn ? (
+                <p className="animate-pulse text-sm text-neutral-300">
+                  🤖 North (CPU) is thinking…
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleEndTurn}
+                  className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                >
+                  End turn ⏭
+                </button>
+              )}
               <p className="max-w-md text-xs text-neutral-500">
-                Hotseat for now: both sides play on this screen, and trap
-                visibility follows whose turn it is — the player to move sees
-                only their own untriggered traps.
+                {cpuMode
+                  ? "You play South against the CPU. Its untriggered traps stay hidden from you, and it can't see yours — it plays from the same limited view you have."
+                  : "Hotseat: both sides play on this screen, and trap visibility follows whose turn it is — the player to move sees only their own untriggered traps."}
               </p>
             </>
           )}
