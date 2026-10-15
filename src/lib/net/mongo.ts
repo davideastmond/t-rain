@@ -5,6 +5,8 @@
 
 import { MongoClient } from "mongodb";
 
+import type { PlayerId } from "@/lib/game/types";
+
 import type { GameRecord, GameStore } from "./store";
 
 let clientPromise: Promise<MongoClient> | null = null;
@@ -70,5 +72,14 @@ export class MongoGameStore implements GameStore {
       { $set: next },
     );
     return result.matchedCount === 1;
+  }
+
+  async touchSeat(gameId: string, seat: PlayerId): Promise<void> {
+    const col = await gamesCollection();
+    const now = new Date().toISOString();
+    await col.updateOne(
+      { _id: gameId },
+      { $set: { [`seats.${seat}.lastSeenAt`]: now, updatedAt: now } },
+    );
   }
 }

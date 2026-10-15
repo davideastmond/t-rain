@@ -20,9 +20,11 @@ export interface NetEventBase {
   at: string; // ISO timestamp
 }
 
-export type NetEvent = NetEventBase & { type: "game-created" };
-// later: player-joined | setup-submitted | step | trap-triggered |
-//        scored | turn-ended | game-finished | forfeited
+export type NetEvent =
+  | (NetEventBase & { type: "game-created" })
+  | (NetEventBase & { type: "player-joined"; player: PlayerId });
+// later: setup-submitted | step | trap-triggered | scored |
+//        turn-ended | game-finished | forfeited
 
 /** Cap for the per-game event log. */
 export const MAX_EVENTS = 50;
@@ -30,8 +32,12 @@ export const MAX_EVENTS = 50;
 export interface SeatInfo {
   /** sha256 hex of the seat's bearer token. The raw token is never stored. */
   tokenHash: string;
-  /** ISO timestamp, refreshed on every authenticated request (presence). */
-  lastSeenAt: string;
+  /**
+   * ISO timestamp of the seat's last authenticated request (presence),
+   * or null if the seat's link has never been opened. North starts null:
+   * their first request is the lobby → setup join.
+   */
+  lastSeenAt: string | null;
 }
 
 export interface GameRecord {
@@ -60,6 +66,13 @@ export interface GameStore {
    * and retries).
    */
   save(record: GameRecord, expectedVersion: number): Promise<boolean>;
+
+  /**
+   * Refresh a seat's presence timestamp. Deliberately does NOT bump
+   * `version`: presence changes every poll and must not invalidate the
+   * version cache that makes polling cheap. Last-writer-wins is fine.
+   */
+  touchSeat(gameId: string, seat: PlayerId): Promise<void>;
 }
 
 /** Non-persistent store for local dev and tests. */
@@ -84,5 +97,12 @@ export class InMemoryGameStore implements GameStore {
     next.updatedAt = new Date().toISOString();
     this.games.set(record.gameId, next);
     return true;
+  }
+
+  async touchSeat(gameId: string, seat: PlayerId): Promise<void> {
+    const current = this.games.get(gameId);
+    if (!current) return;
+    current.seats[seat].lastSeenAt = new Date().toISOString();
+    current.updatedAt = current.seats[seat].lastSeenAt;
   }
 }
