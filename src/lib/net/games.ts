@@ -6,8 +6,8 @@
 
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 
-import { createGame } from "@/lib/game/setup";
-import type { PlayerId } from "@/lib/game/types";
+import { createGame, autoPlaceSetup } from "@/lib/game/setup";
+import type { PlayerId, Position } from "@/lib/game/types";
 
 import { MongoGameStore } from "./mongo";
 import {
@@ -75,9 +75,23 @@ export function gameLink(gameId: string, token: string): string {
 /** A new event before seq/at are assigned. */
 export type NewEvent =
   | { type: "game-created" }
-  | { type: "player-joined"; player: PlayerId };
-// later: setup-submitted | step | trap-triggered | scored |
-//        turn-ended | game-finished | forfeited
+  | { type: "player-joined"; player: PlayerId }
+  | { type: "setup-submitted"; player: PlayerId }
+  | { type: "step"; pieceId: string; from: Position; to: Position; cost: number }
+  | { type: "trap-triggered"; position: Position; victimPieceId: string }
+  | {
+      type: "scored";
+      pieceId: string;
+      player: PlayerId;
+      scores: Record<PlayerId, number>;
+    }
+  | { type: "turn-ended"; player: PlayerId }
+  | { type: "forfeited"; player: PlayerId }
+  | {
+      type: "game-finished";
+      winner: PlayerId;
+      reason: "crossed" | "attrition" | "forfeit";
+    };
 
 /**
  * Append an event to a record's log: assigns the next seq and timestamp,
@@ -96,4 +110,35 @@ export function appendEvent(record: GameRecord, event: NewEvent): NetEvent[] {
   return next.length > MAX_EVENTS
     ? next.slice(next.length - MAX_EVENTS)
     : next;
+}
+
+/**
+ * Resolve an expired setup clock: any seat that never submitted gets the
+ * deterministic auto-placement, exactly as if they had timed out in the
+ * local game. Pure function of the record and the wall clock — safe to
+ * call from any route (polls included), idempotent once applied.
+ */
+export function maybeAutoPlaceSetup(record: GameRecord): {
+  record: GameRecord;
+  changed: boolean;
+} {
+  if (record.state.phase !== "setup") return { record, changed: false };
+  if (!record.setupEndsAt || Date.now() <= Date.parse(record.setupEndsAt)) {
+    return { record, changed: false };
+  }
+  let state = record.state;
+  let events = record.events;
+  let changed = false;
+  for (const player of ["south", "north"] as PlayerId[]) {
+    if (state.pieces.some((piece) => piece.owner === player)) continue;
+    const placed = autoPlaceSetup(state, player);
+    if (!placed.ok) continue;
+    state = placed.state;
+    events = appendEvent({ ...record, state, events }, {
+      type: "setup-submitted",
+      player,
+    });
+    changed = true;
+  }
+  return changed ? { record: { ...record, state, events }, changed } : { record, changed: false };
 }

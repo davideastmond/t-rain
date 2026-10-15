@@ -9,7 +9,7 @@
 // implementation below is for local dev and tests; MongoDB is the
 // production backend (see mongo.ts).
 
-import type { GameState, PlayerId } from "@/lib/game/types";
+import type { GameState, PlayerId, Position } from "@/lib/game/types";
 
 // ---- Events ----
 // The per-game feed clients use for narration/animation. Filtered per
@@ -22,9 +22,34 @@ export interface NetEventBase {
 
 export type NetEvent =
   | (NetEventBase & { type: "game-created" })
-  | (NetEventBase & { type: "player-joined"; player: PlayerId });
-// later: setup-submitted | step | trap-triggered | scored |
-//        turn-ended | game-finished | forfeited
+  | (NetEventBase & { type: "player-joined"; player: PlayerId })
+  | (NetEventBase & { type: "setup-submitted"; player: PlayerId })
+  | (NetEventBase & {
+      type: "step";
+      pieceId: string;
+      from: Position;
+      to: Position;
+      cost: number;
+    })
+  | (NetEventBase & {
+      type: "trap-triggered";
+      position: Position;
+      victimPieceId: string;
+    })
+  | (NetEventBase & {
+      type: "scored";
+      pieceId: string;
+      player: PlayerId;
+      scores: Record<PlayerId, number>;
+    })
+  | (NetEventBase & { type: "turn-ended"; player: PlayerId })
+  | (NetEventBase & { type: "forfeited"; player: PlayerId })
+  | (NetEventBase & {
+      type: "game-finished";
+      winner: PlayerId;
+      reason: "crossed" | "attrition" | "forfeit";
+    });
+// later: spectators / chat, if ever
 
 /** Cap for the per-game event log. */
 export const MAX_EVENTS = 50;
