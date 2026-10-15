@@ -12,8 +12,10 @@ import type { PlayerId } from "@/lib/game/types";
 import { MongoGameStore } from "./mongo";
 import {
   InMemoryGameStore,
+  MAX_EVENTS,
   type GameRecord,
   type GameStore,
+  type NetEvent,
 } from "./store";
 
 export function hashToken(token: string): string {
@@ -54,7 +56,9 @@ export function createNetGame(): CreatedGame {
     events: [{ seq: 1, at: now, type: "game-created" }],
     seats: {
       south: { tokenHash: hashToken(tokens.south), lastSeenAt: now },
-      north: { tokenHash: hashToken(tokens.north), lastSeenAt: now },
+      // North hasn't opened their link yet; their first authenticated
+      // request is the lobby → setup join (see the state route).
+      north: { tokenHash: hashToken(tokens.north), lastSeenAt: null },
     },
     setupEndsAt: null,
     createdAt: now,
@@ -66,4 +70,30 @@ export function createNetGame(): CreatedGame {
 /** Relative per-seat link, e.g. /game/<id>?t=<token>. */
 export function gameLink(gameId: string, token: string): string {
   return `/game/${gameId}?t=${token}`;
+}
+
+/** A new event before seq/at are assigned. */
+export type NewEvent =
+  | { type: "game-created" }
+  | { type: "player-joined"; player: PlayerId };
+// later: setup-submitted | step | trap-triggered | scored |
+//        turn-ended | game-finished | forfeited
+
+/**
+ * Append an event to a record's log: assigns the next seq and timestamp,
+ * caps the log at MAX_EVENTS. Returns the new event array (does not
+ * mutate the record).
+ */
+export function appendEvent(record: GameRecord, event: NewEvent): NetEvent[] {
+  const seq =
+    record.events.length > 0
+      ? record.events[record.events.length - 1].seq + 1
+      : 1;
+  const next: NetEvent[] = [
+    ...record.events,
+    { ...event, seq, at: new Date().toISOString() },
+  ];
+  return next.length > MAX_EVENTS
+    ? next.slice(next.length - MAX_EVENTS)
+    : next;
 }
