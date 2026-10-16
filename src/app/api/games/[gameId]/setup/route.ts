@@ -8,7 +8,6 @@
 
 import { CHARACTERS } from "@/lib/game/constants";
 import { applySetup } from "@/lib/game/setup";
-import { sanitizeForPlayer } from "@/lib/game/cpu";
 import type { CharacterId, Position } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
 import { errorStatus } from "@/lib/net/errors";
@@ -16,6 +15,7 @@ import {
   appendEvent,
   getGameStore,
   maybeAutoPlaceSetup,
+  sanitizeForNetPlayer,
 } from "@/lib/net/games";
 import type { GameRecord } from "@/lib/net/store";
 
@@ -105,17 +105,15 @@ export async function POST(
     );
   }
 
-  const updated: GameRecord = {
-    ...record,
-    state: result.state,
-    events: appendEvent(record, { type: "setup-submitted", player: seat }),
-  };
+  const events = appendEvent(record, { type: "setup-submitted", player: seat });
+  const updated: GameRecord = { ...record, state: result.state, events };
   if (!(await store.save(updated, record.version))) {
     return Response.json({ error: "version-conflict" }, { status: 409 });
   }
   return Response.json({
     ok: true,
     version: record.version + 1,
-    state: sanitizeForPlayer(result.state, seat),
+    state: sanitizeForNetPlayer(result.state, seat),
+    events: events.slice(events.length - 1),
   });
 }

@@ -7,7 +7,8 @@
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 
 import { createGame, autoPlaceSetup } from "@/lib/game/setup";
-import type { PlayerId, Position } from "@/lib/game/types";
+import { sanitizeForPlayer } from "@/lib/game/cpu";
+import type { GameState, PlayerId, Position } from "@/lib/game/types";
 
 import { MongoGameStore } from "./mongo";
 import {
@@ -70,6 +71,27 @@ export function createNetGame(): CreatedGame {
 /** Relative per-seat link, e.g. /game/<id>?t=<token>. */
 export function gameLink(gameId: string, token: string): string {
   return `/game/${gameId}?t=${token}`;
+}
+
+/**
+ * The per-seat view of a game state for the network API. Starts from the
+ * CPU-proven sanitizeForPlayer (opponent's untriggered traps stay hidden)
+ * and additionally hides the opponent's *pieces* while the game is still
+ * in setup — placements are simultaneous, so nothing about either side's
+ * draft may leak early.
+ */
+export function sanitizeForNetPlayer(
+  state: GameState,
+  seat: PlayerId,
+): GameState {
+  const filtered = sanitizeForPlayer(state, seat);
+  if (state.phase === "setup") {
+    return {
+      ...filtered,
+      pieces: filtered.pieces.filter((piece) => piece.owner === seat),
+    };
+  }
+  return filtered;
 }
 
 /** A new event before seq/at are assigned. */

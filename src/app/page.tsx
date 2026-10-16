@@ -121,6 +121,48 @@ export default function Home() {
   const [gameId, setGameId] = useState(0);
   const [cpuMode, setCpuMode] = useState(true);
 
+  // Online (Human vs Human): creating a network game hands back two
+  // bearer-token links — yours, and one to share with your opponent.
+  const [creatingOnline, setCreatingOnline] = useState(false);
+  const [onlineGame, setOnlineGame] = useState<{
+    gameId: string;
+    yourLink: string;
+    inviteLink: string;
+  } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  async function createOnlineGame() {
+    setCreatingOnline(true);
+    try {
+      const res = await fetch("/api/games", { method: "POST" });
+      if (!res.ok) {
+        setMessage("Couldn't create the online game — try again.");
+        return;
+      }
+      const body = await res.json();
+      window.localStorage.setItem(
+        `train-invite-${body.gameId}`,
+        body.inviteLink,
+      );
+      setOnlineGame(body);
+      setInviteCopied(false);
+    } finally {
+      setCreatingOnline(false);
+    }
+  }
+
+  async function copyInviteLink() {
+    if (!onlineGame) return;
+    try {
+      await window.navigator.clipboard.writeText(
+        `${window.location.origin}${onlineGame.inviteLink}`,
+      );
+      setInviteCopied(true);
+    } catch {
+      setInviteCopied(false);
+    }
+  }
+
   const palette = BIOME_PALETTES[game.biome];
   const southApplied = game.pieces.some((p) => p.owner === LOCAL_PLAYER);
   const inSetup = game.phase === "setup";
@@ -461,6 +503,51 @@ export default function Home() {
               : "Setup: place your pieces and hide your traps."}
         </p>
       </header>
+
+      <div className="flex w-full max-w-xl flex-col items-center gap-3 rounded-lg bg-neutral-900 px-6 py-4 text-center">
+        <p className="text-sm text-neutral-300">
+          <span className="font-semibold text-neutral-100">
+            🌐 Play online
+          </span>{" "}
+          — human vs human, in two browsers. The server holds the game;
+          your opponent&apos;s traps stay hidden.
+        </p>
+        {!onlineGame ? (
+          <button
+            type="button"
+            onClick={createOnlineGame}
+            disabled={creatingOnline}
+            className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+          >
+            {creatingOnline ? "Creating…" : "Create online game"}
+          </button>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-sm text-neutral-400">
+              Game created! Send this link to your opponent — it won&apos;t be
+              shown again:
+            </p>
+            <code className="max-w-full break-all rounded bg-neutral-800 px-3 py-2 font-mono text-xs">
+              {onlineGame.inviteLink}
+            </code>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                onClick={copyInviteLink}
+                className="rounded-full bg-neutral-700 px-4 py-1.5 text-sm transition hover:bg-neutral-600"
+              >
+                {inviteCopied ? "✓ Copied" : "📋 Copy invite link"}
+              </button>
+              <a
+                href={onlineGame.yourLink}
+                className="rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+              >
+                Enter as South →
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         <span className="rounded-full bg-neutral-800 px-3 py-1 text-sm">

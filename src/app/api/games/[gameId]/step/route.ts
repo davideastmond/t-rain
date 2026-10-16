@@ -7,7 +7,6 @@
 // replan the rest of the turn. No move rule is ever trusted to the client.
 
 import { PIECES_TO_WIN } from "@/lib/game/constants";
-import { sanitizeForPlayer } from "@/lib/game/cpu";
 import { movePieceStep } from "@/lib/game/movement";
 import type { PlayerId, Position } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
@@ -16,6 +15,7 @@ import {
   appendEvent,
   getGameStore,
   maybeAutoPlaceSetup,
+  sanitizeForNetPlayer,
   type NewEvent,
 } from "@/lib/net/games";
 import type { GameRecord, NetEvent } from "@/lib/net/store";
@@ -136,7 +136,8 @@ export async function POST(
   return Response.json({
     ok: true,
     version: record.version + 1,
-    state: sanitizeForPlayer(result.state, seat),
+    state: sanitizeForNetPlayer(result.state, seat),
     outcome: result.outcome,
+    events: eventsLog.slice(eventsLog.length - events.length),
   });
 }

@@ -14,13 +14,13 @@
 //   join — it starts the setup clock and bumps the version.
 
 import { SETUP_TIME_SECONDS } from "@/lib/game/constants";
-import { sanitizeForPlayer } from "@/lib/game/cpu";
 import type { PlayerId } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
 import {
   appendEvent,
   getGameStore,
   maybeAutoPlaceSetup,
+  sanitizeForNetPlayer,
 } from "@/lib/net/games";
 import type { GameRecord } from "@/lib/net/store";
 
@@ -90,6 +90,7 @@ export async function GET(
 
   const base = {
     version: record.version,
+    seat,
     opponentSeenAgoSec: seenAgoSec(record.seats[opponent].lastSeenAt),
   };
 
@@ -101,7 +102,8 @@ export async function GET(
   return Response.json({
     changed: true,
     ...base,
-    state: sanitizeForPlayer(record.state, seat),
+    setupEndsAt: record.setupEndsAt,
+    state: sanitizeForNetPlayer(record.state, seat),
     events: record.events.filter((event) => event.seq > since),
   });
 }
