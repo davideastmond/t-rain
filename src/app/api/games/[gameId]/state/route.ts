@@ -17,7 +17,11 @@ import { SETUP_TIME_SECONDS } from "@/lib/game/constants";
 import { sanitizeForPlayer } from "@/lib/game/cpu";
 import type { PlayerId } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
-import { appendEvent, getGameStore } from "@/lib/net/games";
+import {
+  appendEvent,
+  getGameStore,
+  maybeAutoPlaceSetup,
+} from "@/lib/net/games";
 import type { GameRecord } from "@/lib/net/store";
 
 function seenAgoSec(seenAt: string | null): number | null {
@@ -71,6 +75,19 @@ export async function GET(
   }
 
   const opponent: PlayerId = seat === "south" ? "north" : "south";
+
+  // An expired setup clock resolves even if nobody acts — polling alone
+  // moves the game into playing.
+  const auto = maybeAutoPlaceSetup(record);
+  if (auto.changed) {
+    if (await store.save(auto.record, record.version)) {
+      record = { ...auto.record, version: record.version + 1 };
+    } else {
+      const fresh = await store.load(gameId);
+      if (fresh) record = fresh;
+    }
+  }
+
   const base = {
     version: record.version,
     opponentSeenAgoSec: seenAgoSec(record.seats[opponent].lastSeenAt),
