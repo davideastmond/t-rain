@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import Board, { tileKey } from "@/components/Board";
+import SetupTray, { type SetupMode } from "@/components/SetupTray";
 import { chooseCpuStep, sanitizeForPlayer } from "@/lib/game/cpu";
 import {
   CHARACTERS,
@@ -37,6 +38,11 @@ import {
   PIECES_TO_WIN,
   TRAPS_PER_PLAYER,
 } from "@/lib/game/constants";
+import {
+  playerLabel,
+  SETUP_ERROR_MESSAGES,
+  MOVE_ERROR_MESSAGES as SHARED_MOVE_ERROR_MESSAGES,
+} from "@/lib/game/messages";
 import {
   endTurn,
   getPiece,
@@ -55,7 +61,6 @@ import {
   createGame,
   isInPieceZone,
   isInTrapZone,
-  type SetupError,
 } from "@/lib/game/setup";
 import {
   type CharacterId,
@@ -73,41 +78,17 @@ const FIRST_SEED = 42;
 /** Pause between CPU steps so its turn is watchable, not instantaneous. */
 const CPU_STEP_DELAY_MS = 350;
 
-const ERROR_MESSAGES: Record<SetupError, string> = {
-  "wrong-phase": "The game isn't in the setup phase.",
-  "already-setup": "You've already locked in your setup.",
-  "wrong-piece-count": `You need exactly ${PIECES_PER_PLAYER} pieces placed.`,
-  "duplicate-character": "Each character can only be placed once.",
-  "piece-outside-zone": "Pieces go in your back 3 rows.",
-  "wrong-trap-count": `You need exactly ${TRAPS_PER_PLAYER} traps placed.`,
-  "trap-outside-zone": "Traps go in your zone or the neutral row.",
-  "too-many-neutral-traps": `At most ${MAX_NEUTRAL_TRAPS} traps may go in the neutral row.`,
-  "duplicate-position": "That tile is already taken.",
-  "on-water": "Nothing can be placed on water.",
-};
-
+// In hotseat mode the not-your-turn error means you clicked the other
+// player's piece, so it gets a more specific message than the default.
 const MOVE_ERROR_MESSAGES: Record<MoveError, string> = {
-  "wrong-phase": "The game isn't being played right now.",
-  "piece-not-found": "That piece doesn't exist.",
-  "piece-not-active": "That piece is no longer on the board.",
+  ...SHARED_MOVE_ERROR_MESSAGES,
   "not-your-turn": "That piece belongs to the other player.",
-  "not-adjacent": "Pieces step one tile up, down, left, or right.",
-  "on-water": "Pieces can't enter water.",
-  occupied: "That tile is occupied — pieces block each other.",
-  "exceeds-piece-cap": `A piece can spend at most ${MAX_POINTS_PER_PIECE_PER_TURN} points per turn.`,
-  "insufficient-points": "Not enough movement points left in this turn's pool.",
 };
-
-type Mode = "pieces" | "traps";
-
-function playerLabel(player: PlayerId): string {
-  return player === "north" ? "North" : "South";
-}
 
 export default function LocalGamePage() {
   const [seedText, setSeedText] = useState(String(FIRST_SEED));
   const [game, setGame] = useState<GameState>(() => createGame(FIRST_SEED));
-  const [mode, setMode] = useState<Mode>("pieces");
+  const [mode, setMode] = useState<SetupMode>("pieces");
   const [selectedCharacter, setSelectedCharacter] =
     useState<CharacterId>("cat");
   const [draftPieces, setDraftPieces] = useState<
@@ -261,7 +242,7 @@ export default function LocalGamePage() {
       ).map((c) => draftPieces[c]!);
       const check = canPlacePieceAt(game, LOCAL_PLAYER, position, others);
       if (!check.ok) {
-        setMessage(ERROR_MESSAGES[check.error]);
+        setMessage(SETUP_ERROR_MESSAGES[check.error]);
         return;
       }
       const nextDraft = { ...draftPieces, [selectedCharacter]: position };
@@ -285,7 +266,7 @@ export default function LocalGamePage() {
     }
     const check = canPlaceTrapAt(game, LOCAL_PLAYER, position, draftTraps);
     if (!check.ok) {
-      setMessage(ERROR_MESSAGES[check.error]);
+      setMessage(SETUP_ERROR_MESSAGES[check.error]);
       return;
     }
     setDraftTraps((prev) => [...prev, position]);
@@ -298,7 +279,7 @@ export default function LocalGamePage() {
     }));
     const result = applySetup(game, LOCAL_PLAYER, placements, draftTraps);
     if (!result.ok) {
-      setMessage(ERROR_MESSAGES[result.error]);
+      setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
     }
     setGame(result.state);
@@ -308,7 +289,7 @@ export default function LocalGamePage() {
   function autoPlaceMine() {
     const result = autoPlaceSetup(game, LOCAL_PLAYER);
     if (!result.ok) {
-      setMessage(ERROR_MESSAGES[result.error]);
+      setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
     }
     setGame(result.state);
@@ -322,7 +303,7 @@ export default function LocalGamePage() {
     // hidden because displayTraps never includes them.
     const result = autoPlaceSetup(game, OPPONENT);
     if (!result.ok) {
-      setMessage(ERROR_MESSAGES[result.error]);
+      setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
     }
     setGame(result.state);
@@ -527,58 +508,16 @@ export default function LocalGamePage() {
             a placed piece to pick it back up.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("pieces")}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-                mode === "pieces"
-                  ? "bg-emerald-600 text-white"
-                  : "bg-neutral-800 hover:bg-neutral-700"
-              }`}
-            >
-              🐾 Pieces · {draftPieceCount}/{PIECES_PER_PLAYER}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("traps")}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-                mode === "traps"
-                  ? "bg-emerald-600 text-white"
-                  : "bg-neutral-800 hover:bg-neutral-700"
-              }`}
-            >
-              💣 Traps · {draftTraps.length}/{TRAPS_PER_PLAYER} (neutral{" "}
-              {neutralTrapCount}/{MAX_NEUTRAL_TRAPS})
-            </button>
-          </div>
-
-          {mode === "pieces" && (
-            <div className="flex max-w-xl flex-wrap items-center justify-center gap-1.5">
-              {ALL_CHARACTERS.map((character) => {
-                const placed = Boolean(draftPieces[character]);
-                const selected = character === selectedCharacter;
-                return (
-                  <button
-                    key={character}
-                    type="button"
-                    onClick={() => setSelectedCharacter(character)}
-                    className={`rounded-full px-2.5 py-1 text-sm transition ${
-                      selected
-                        ? "bg-white text-black"
-                        : placed
-                          ? "bg-neutral-800 text-neutral-500"
-                          : "bg-neutral-800 hover:bg-neutral-700"
-                    }`}
-                    title={CHARACTERS[character].label}
-                  >
-                    {CHARACTERS[character].emoji} {CHARACTERS[character].label}
-                    {placed ? " ✓" : ""}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <SetupTray
+            mode={mode}
+            onModeChange={setMode}
+            draftPieceCount={draftPieceCount}
+            trapCount={draftTraps.length}
+            neutralTrapCount={neutralTrapCount}
+            draftPieces={draftPieces}
+            selectedCharacter={selectedCharacter}
+            onSelectCharacter={setSelectedCharacter}
+          />
         </>
       )}
 
