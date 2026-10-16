@@ -1,6 +1,5 @@
 // POST /api/games/[gameId]/forfeit — resign the game. The other seat wins.
 
-import { sanitizeForPlayer } from "@/lib/game/cpu";
 import { otherPlayer } from "@/lib/game/setup";
 import type { PlayerId } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
@@ -8,6 +7,7 @@ import {
   appendEvent,
   getGameStore,
   maybeAutoPlaceSetup,
+  sanitizeForNetPlayer,
   type NewEvent,
 } from "@/lib/net/games";
 import type { GameRecord, NetEvent } from "@/lib/net/store";
@@ -56,6 +56,7 @@ export async function POST(
   return Response.json({
     ok: true,
     version: record.version + 1,
-    state: sanitizeForPlayer(updated.state, seat),
+    state: sanitizeForNetPlayer(updated.state, seat),
+    events: eventsLog.slice(eventsLog.length - events.length),
   });
 }

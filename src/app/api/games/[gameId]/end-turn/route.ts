@@ -1,9 +1,13 @@
 // POST /api/games/[gameId]/end-turn — pass the turn to the other player.
 
-import { sanitizeForPlayer } from "@/lib/game/cpu";
 import { endTurn } from "@/lib/game/movement";
 import { authenticateGameRequest } from "@/lib/net/auth";
-import { appendEvent, getGameStore, maybeAutoPlaceSetup } from "@/lib/net/games";
+import {
+  appendEvent,
+  getGameStore,
+  maybeAutoPlaceSetup,
+  sanitizeForNetPlayer,
+} from "@/lib/net/games";
 import type { GameRecord } from "@/lib/net/store";
 
 export async function POST(
@@ -38,17 +42,15 @@ export async function POST(
     return Response.json({ error: result.error }, { status: 403 });
   }
 
-  const updated: GameRecord = {
-    ...record,
-    state: result.state,
-    events: appendEvent(record, { type: "turn-ended", player: seat }),
-  };
+  const events = appendEvent(record, { type: "turn-ended", player: seat });
+  const updated: GameRecord = { ...record, state: result.state, events };
   if (!(await store.save(updated, record.version))) {
     return Response.json({ error: "version-conflict" }, { status: 409 });
   }
   return Response.json({
     ok: true,
     version: record.version + 1,
-    state: sanitizeForPlayer(result.state, seat),
+    state: sanitizeForNetPlayer(result.state, seat),
+    events: events.slice(events.length - 1),
   });
 }
