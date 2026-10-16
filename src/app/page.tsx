@@ -44,9 +44,8 @@ export default function LandingPage() {
   async function copyInviteLink() {
     if (!onlineGame) return;
     try {
-      await window.navigator.clipboard.writeText(
-        `${window.location.origin}${onlineGame.inviteLink}`,
-      );
+      // The invite link is already absolute (built from BASE_URL server-side).
+      await window.navigator.clipboard.writeText(onlineGame.inviteLink);
       setCopied(true);
     } catch {
       setCopied(false);

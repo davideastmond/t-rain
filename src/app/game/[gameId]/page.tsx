@@ -457,9 +457,8 @@ function GameClient() {
     const link = window.localStorage.getItem(`train-invite-${gameId}`);
     if (!link) return;
     try {
-      await window.navigator.clipboard.writeText(
-        `${window.location.origin}${link}`,
-      );
+      // The invite link is already absolute (built from BASE_URL server-side).
+      await window.navigator.clipboard.writeText(link);
       pushFeed(["Invite link copied — send it to your opponent."]);
     } catch {
       pushFeed(["Couldn't copy — the link is on the page you created the game from."]);
