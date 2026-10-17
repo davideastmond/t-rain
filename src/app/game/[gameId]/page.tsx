@@ -20,6 +20,8 @@ import {
   MAX_NEUTRAL_TRAPS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
+  NERF_POOL_COST,
+  NERF_TOKEN_CAP,
   NEUTRAL_ROW,
   PIECES_PER_PLAYER,
   PIECES_TO_WIN,
@@ -27,11 +29,14 @@ import {
 } from "@/lib/game/constants";
 import {
   MOVE_ERROR_MESSAGES,
+  NERF_ERROR_MESSAGES,
   playerLabel,
   SETUP_ERROR_MESSAGES,
 } from "@/lib/game/messages";
 import { getPiece, legalStepTargets, pieceAt } from "@/lib/game/movement";
 import type { MoveError } from "@/lib/game/movement";
+import { nerfTargets } from "@/lib/game/nerf";
+import type { NerfError } from "@/lib/game/nerf";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
 import {
   ALL_CHARACTERS,
@@ -59,6 +64,8 @@ function actionErrorMessage(error: unknown): string {
       return SETUP_ERROR_MESSAGES[error as SetupError];
     if (error in MOVE_ERROR_MESSAGES)
       return MOVE_ERROR_MESSAGES[error as MoveError];
+    if (error in NERF_ERROR_MESSAGES)
+      return NERF_ERROR_MESSAGES[error as NerfError];
     if (error === "version-conflict") return "The game moved — refreshed.";
     if (error === "malformed-body") return "That request was malformed.";
   }
@@ -100,6 +107,14 @@ function describeEvents(
       case "turn-ended":
         lines.push(`⏭ ${playerLabel(event.player)} ended their turn.`);
         break;
+      case "nerfed": {
+        const victim = state.pieces.find((p) => p.id === event.targetPieceId);
+        const who = victim
+          ? `${CHARACTERS[victim.character].emoji} ${playerLabel(victim.owner)} ${CHARACTERS[victim.character].label}`
+          : "A piece";
+        lines.push(`⚡ ${playerLabel(event.player)}'s nerf eliminates ${who}!`);
+        break;
+      }
       case "forfeited":
         lines.push(`🏳 ${playerLabel(event.player)} forfeited the game.`);
         break;
@@ -145,6 +160,8 @@ function GameClient() {
   const [draftTraps, setDraftTraps] = useState<Position[]>([]);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   const [forfeitArmed, setForfeitArmed] = useState(false);
+  /** Nerf targeting mode: red highlights, clicks execute nerfs. */
+  const [nerfArmed, setNerfArmed] = useState(false);
 
   const versionRef = useRef(0);
   const lastEventSeqRef = useRef(0);
@@ -335,6 +352,19 @@ function GameClient() {
     ? getPiece(netState!, selectedPieceId)
     : undefined;
 
+  // Red targets for the nerf toggle — from the engine's nerfTargets over
+  // the filtered view (opponent pieces are visible during play). Only
+  // while armed on my turn.
+  const dangerHighlighted = useMemo(() => {
+    const keys = new Set<string>();
+    if (netState && seat && playing && myTurn && nerfArmed) {
+      for (const target of nerfTargets(netState, seat)) {
+        keys.add(tileKey(target.position));
+      }
+    }
+    return keys;
+  }, [netState, seat, playing, myTurn, nerfArmed]);
+
   const draftPieceCount = Object.keys(draftPieces).length;
   const neutralTrapCount = draftTraps.filter((p) => p.y === NEUTRAL_ROW).length;
   const setupComplete =
@@ -405,8 +435,38 @@ function GameClient() {
     }
   }
 
+  /** Arm/disarm nerf targeting. Arming clears piece selection — the two
+      modes share the board but never mix. */
+  function toggleNerf() {
+    if (!netState || !seat) return;
+    if (nerfArmed) {
+      setNerfArmed(false);
+      return;
+    }
+    const targets = nerfTargets(netState, seat);
+    if (targets.length === 0) {
+      pushFeed([
+        "No valid nerf targets — an enemy piece must stand next to one of yours.",
+      ]);
+      return;
+    }
+    setSelectedPieceId(null);
+    setNerfArmed(true);
+    pushFeed(["⚡ Nerf armed — tap a red-highlighted enemy piece."]);
+  }
+
   async function handlePlayClick(position: Position) {
     if (!netState || !seat || !myTurn || busy) return;
+    // Nerf targeting mode: every click is a nerf attempt on the piece
+    // under the cursor (or an invalid-target error when there is none).
+    if (nerfArmed) {
+      const clicked = pieceAt(netState, position);
+      const data = await postAction("nerf", {
+        targetPieceId: clicked ? clicked.id : "",
+      });
+      if (data) setNerfArmed(false);
+      return;
+    }
     const clicked = pieceAt(netState, position);
     if (clicked && clicked.owner === seat) {
       setSelectedPieceId(clicked.id);
@@ -575,6 +635,7 @@ function GameClient() {
         pieces={displayPieces}
         traps={displayTraps}
         highlighted={highlighted}
+        dangerHighlighted={dangerHighlighted}
         piecesKey={gameId}
         selectedKey={
           playing && myTurn && selectedPiece
@@ -709,6 +770,13 @@ function GameClient() {
                 <span className="font-mono font-semibold">
                   {netState.movementPointsLeft}/{MOVEMENT_POINTS_PER_TURN}
                 </span>
+                {" "}· ⚡{" "}
+                <span
+                  className="font-mono font-semibold"
+                  title="Nerf tokens — earn one per crossing (usable next turn); a nerf costs 1 token + 3 pool points"
+                >
+                  {netState.nerfTokens[seat]}/{NERF_TOKEN_CAP}
+                </span>
                 {myTurn && selectedPiece && (
                   <>
                     {" "}
@@ -725,6 +793,7 @@ function GameClient() {
                     type="button"
                     onClick={() => {
                       setSelectedPieceId(null);
+                      setNerfArmed(false);
                       postAction("end-turn");
                     }}
                     disabled={busy}
@@ -734,9 +803,26 @@ function GameClient() {
                   </button>
                   <button
                     type="button"
+                    onClick={toggleNerf}
+                    disabled={
+                      busy ||
+                      netState.nerfTokens[seat] < 1 ||
+                      netState.movementPointsLeft < NERF_POOL_COST
+                    }
+                    className={`rounded-full px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      nerfArmed
+                        ? "bg-red-600 text-white hover:bg-red-500"
+                        : "bg-neutral-800 hover:bg-neutral-700"
+                    }`}
+                  >
+                    {nerfArmed ? "⚡ Cancel nerf" : "⚡ Nerf"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       if (forfeitArmed) {
                         setForfeitArmed(false);
+                        setNerfArmed(false);
                         postAction("forfeit");
                       } else {
                         setForfeitArmed(true);
