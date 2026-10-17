@@ -33,6 +33,8 @@ import {
   MAX_NEUTRAL_TRAPS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
+  NERF_POOL_COST,
+  NERF_TOKEN_CAP,
   NEUTRAL_ROW,
   PIECES_PER_PLAYER,
   PIECES_TO_WIN,
@@ -41,6 +43,7 @@ import {
 import {
   playerLabel,
   SETUP_ERROR_MESSAGES,
+  NERF_ERROR_MESSAGES,
   MOVE_ERROR_MESSAGES as SHARED_MOVE_ERROR_MESSAGES,
 } from "@/lib/game/messages";
 import {
@@ -51,6 +54,7 @@ import {
   pieceAt,
   type MoveError,
 } from "@/lib/game/movement";
+import { applyNerf, nerfTargets } from "@/lib/game/nerf";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
 import {
   ALL_CHARACTERS,
@@ -97,6 +101,8 @@ export default function LocalGamePage() {
   const [draftTraps, setDraftTraps] = useState<Position[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
+  /** Nerf targeting mode: red highlights, clicks execute nerfs. */
+  const [nerfArmed, setNerfArmed] = useState(false);
   const [turnCount, setTurnCount] = useState(0);
   // Bumps on every new game so piece markers remount instead of animating
   // from the previous game's positions.
@@ -199,6 +205,19 @@ export default function LocalGamePage() {
     playing,
   ]);
 
+  // Red targets for the nerf toggle — straight from the engine's
+  // nerfTargets, so the glow *is* the rule set. Only while armed on a
+  // human turn.
+  const dangerHighlighted = useMemo(() => {
+    const keys = new Set<string>();
+    if (playing && nerfArmed && !cpuTurn) {
+      for (const target of nerfTargets(game, game.currentPlayer)) {
+        keys.add(tileKey(target.position));
+      }
+    }
+    return keys;
+  }, [game, playing, nerfArmed, cpuTurn]);
+
   function newGame(nextSeed: number) {
     setGame(createGame(nextSeed));
     setSeedText(String(nextSeed));
@@ -206,6 +225,7 @@ export default function LocalGamePage() {
     setDraftTraps([]);
     setSelectedCharacter("cat");
     setMode("pieces");
+    setNerfArmed(false);
     setMessage(null);
     setSelectedPieceId(null);
     setTurnCount(0);
@@ -314,8 +334,54 @@ export default function LocalGamePage() {
 
   // --- Play (Step 5) --------------------------------------------------------
 
+  /** Arm/disarm nerf targeting. Arming clears piece selection — the two
+      modes share the board but never mix. */
+  function toggleNerf() {
+    if (nerfArmed) {
+      setNerfArmed(false);
+      setMessage(null);
+      return;
+    }
+    const targets = nerfTargets(game, game.currentPlayer);
+    if (targets.length === 0) {
+      setMessage(
+        "No valid nerf targets — an enemy piece must stand next to one of yours.",
+      );
+      return;
+    }
+    setSelectedPieceId(null);
+    setNerfArmed(true);
+    setMessage("⚡ Nerf armed — tap a red-highlighted enemy piece.");
+  }
+
   function handlePlayClick(position: Position) {
     if (!playing) return;
+
+    // Nerf targeting mode: every click is a nerf attempt on the piece
+    // under the cursor (or an invalid-target error when there is none).
+    if (nerfArmed) {
+      const clicked = pieceAt(game, position);
+      const result = applyNerf(
+        game,
+        game.currentPlayer,
+        clicked ? clicked.id : "",
+      );
+      if (!result.ok) {
+        setMessage(NERF_ERROR_MESSAGES[result.error]);
+        return;
+      }
+      setGame(result.state);
+      setNerfArmed(false);
+      setSelectedPieceId(null);
+      const victim = getPiece(game, result.outcome.eliminatedPieceId)!;
+      const who = `${CHARACTERS[victim.character].emoji} ${playerLabel(victim.owner)} ${CHARACTERS[victim.character].label}`;
+      setMessage(
+        result.state.phase === "finished"
+          ? `⚡ ${playerLabel(game.currentPlayer)}'s nerf eliminates ${who} — and that ends the game!`
+          : `⚡ ${playerLabel(game.currentPlayer)}'s nerf eliminates ${who}!`,
+      );
+      return;
+    }
 
     // Clicking one of the current player's pieces selects it — including
     // switching selection from another piece.
@@ -350,10 +416,13 @@ export default function LocalGamePage() {
       );
     } else if (result.outcome.scored) {
       setSelectedPieceId(null);
+      const earnedToken =
+        result.state.nerfTokensPending[selectedPiece.owner] >
+        game.nerfTokensPending[selectedPiece.owner];
       setMessage(
         result.state.phase === "finished"
           ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}!`
-          : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.`,
+          : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.${earnedToken ? " +1 ⚡ nerf token (usable next turn)." : ""}`,
       );
     } else {
       setMessage(null);
@@ -365,6 +434,7 @@ export default function LocalGamePage() {
     if (!result.ok) return;
     setGame(result.state);
     setSelectedPieceId(null);
+    setNerfArmed(false);
     setTurnCount((count) => count + 1);
     setMessage(
       `${playerLabel(result.state.currentPlayer)}'s turn — ${MOVEMENT_POINTS_PER_TURN} fresh movement points.`,
@@ -533,6 +603,7 @@ export default function LocalGamePage() {
         pieces={displayPieces}
         traps={displayTraps}
         highlighted={highlighted}
+        dangerHighlighted={dangerHighlighted}
         piecesKey={gameId}
         selectedKey={
           playing && selectedPiece ? tileKey(selectedPiece.position) : undefined
@@ -694,6 +765,13 @@ export default function LocalGamePage() {
                 <span className="font-mono font-semibold">
                   {game.movementPointsLeft}/{MOVEMENT_POINTS_PER_TURN}
                 </span>
+                {" "}· ⚡{" "}
+                <span
+                  className="font-mono font-semibold"
+                  title="Nerf tokens — earn one per crossing (usable next turn); a nerf costs 1 token + 3 pool points"
+                >
+                  {game.nerfTokens[game.currentPlayer]}/{NERF_TOKEN_CAP}
+                </span>
                 {selectedPiece && (
                   <>
                     {" "}
@@ -703,19 +781,44 @@ export default function LocalGamePage() {
                     {MAX_POINTS_PER_PIECE_PER_TURN}
                   </>
                 )}
+                {nerfArmed && (
+                  <>
+                    {" "}·{" "}
+                    <span className="font-semibold text-red-400">
+                      nerf targeting — tap a red piece
+                    </span>
+                  </>
+                )}
               </p>
               {cpuTurn ? (
                 <p className="animate-pulse text-sm text-neutral-300">
                   🤖 North (CPU) is thinking…
                 </p>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleEndTurn}
-                  className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-                >
-                  End turn ⏭
-                </button>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleEndTurn}
+                    className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                  >
+                    End turn ⏭
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleNerf}
+                    disabled={
+                      game.nerfTokens[game.currentPlayer] < 1 ||
+                      game.movementPointsLeft < NERF_POOL_COST
+                    }
+                    className={`rounded-full px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      nerfArmed
+                        ? "bg-red-600 text-white hover:bg-red-500"
+                        : "bg-neutral-800 hover:bg-neutral-700"
+                    }`}
+                  >
+                    {nerfArmed ? "⚡ Cancel nerf" : "⚡ Nerf"}
+                  </button>
+                </div>
               )}
               <p className="max-w-md text-xs text-neutral-500">
                 {cpuMode

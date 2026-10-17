@@ -42,6 +42,8 @@ interface BoardProps {
   pieces?: Piece[];
   traps?: Trap[];
   highlighted?: Set<string>;
+  /** Tile keys to outline red — the nerf targeting mode uses this. */
+  dangerHighlighted?: Set<string>;
   /** Tile key ("x,y") of the currently selected piece, drawn with a white ring. */
   selectedKey?: string;
   /** Change to remount piece markers (e.g. on a new game) instead of animating them. */
@@ -55,6 +57,7 @@ export default function Board({
   pieces = [],
   traps = [],
   highlighted,
+  dangerHighlighted,
   selectedKey,
   piecesKey,
   onTileClick,
@@ -83,6 +86,8 @@ export default function Board({
           const isNeutralRow = tile.position.y === NEUTRAL_ROW;
           const isHighlighted =
             highlighted?.has(tileKey(tile.position)) ?? false;
+          const isDangerHighlighted =
+            dangerHighlighted?.has(tileKey(tile.position)) ?? false;
           const trap = trapByTile.get(index);
 
           return (
@@ -96,11 +101,13 @@ export default function Board({
               }`}
               style={{
                 backgroundColor: palette.colors[tile.terrain],
-                boxShadow: isHighlighted
-                  ? "inset 0 0 0 2px rgba(255, 255, 255, 0.85)"
-                  : isNeutralRow
-                    ? "inset 0 0 0 2px rgba(0, 0, 0, 0.45)"
-                    : undefined,
+                boxShadow: isDangerHighlighted
+                  ? "inset 0 0 0 2px rgba(239, 68, 68, 0.9)"
+                  : isHighlighted
+                    ? "inset 0 0 0 2px rgba(255, 255, 255, 0.85)"
+                    : isNeutralRow
+                      ? "inset 0 0 0 2px rgba(0, 0, 0, 0.45)"
+                      : undefined,
               }}
               title={`${palette.terrainLabels[tile.terrain]} (${tile.position.x}, ${tile.position.y})`}
             >
