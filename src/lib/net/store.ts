@@ -45,6 +45,11 @@ export type NetEvent =
   | (NetEventBase & { type: "turn-ended"; player: PlayerId })
   | (NetEventBase & { type: "forfeited"; player: PlayerId })
   | (NetEventBase & {
+      type: "nerfed";
+      player: PlayerId;
+      targetPieceId: string;
+    })
+  | (NetEventBase & {
       type: "game-finished";
       winner: PlayerId;
       reason: "crossed" | "attrition" | "forfeit";
