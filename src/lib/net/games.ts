@@ -6,8 +6,8 @@
 
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 
-import { createGame, autoPlaceSetup } from "@/lib/game/setup";
 import { sanitizeForPlayer } from "@/lib/game/cpu";
+import { autoPlaceSetup, createGame } from "@/lib/game/setup";
 import type { GameState, PlayerId, Position } from "@/lib/game/types";
 
 import { MongoGameStore } from "./mongo";
@@ -70,7 +70,10 @@ export function createNetGame(): CreatedGame {
 
 /** Relative per-seat link, e.g. /game/<id>?t=<token>. */
 export function gameLink(gameId: string, token: string): string {
-  return `/game/${gameId}?t=${token}`;
+  if (!process.env.BASE_URL) {
+    throw new Error("BASE_URL is not set or is undefined");
+  }
+  return `${process.env.BASE_URL}/game/${gameId}?t=${token}`;
 }
 
 /**
@@ -99,7 +102,13 @@ export type NewEvent =
   | { type: "game-created" }
   | { type: "player-joined"; player: PlayerId }
   | { type: "setup-submitted"; player: PlayerId }
-  | { type: "step"; pieceId: string; from: Position; to: Position; cost: number }
+  | {
+      type: "step";
+      pieceId: string;
+      from: Position;
+      to: Position;
+      cost: number;
+    }
   | { type: "trap-triggered"; position: Position; victimPieceId: string }
   | {
       type: "scored";
@@ -129,9 +138,7 @@ export function appendEvent(record: GameRecord, event: NewEvent): NetEvent[] {
     ...record.events,
     { ...event, seq, at: new Date().toISOString() },
   ];
-  return next.length > MAX_EVENTS
-    ? next.slice(next.length - MAX_EVENTS)
-    : next;
+  return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
 }
 
 /**
@@ -156,11 +163,16 @@ export function maybeAutoPlaceSetup(record: GameRecord): {
     const placed = autoPlaceSetup(state, player);
     if (!placed.ok) continue;
     state = placed.state;
-    events = appendEvent({ ...record, state, events }, {
-      type: "setup-submitted",
-      player,
-    });
+    events = appendEvent(
+      { ...record, state, events },
+      {
+        type: "setup-submitted",
+        player,
+      },
+    );
     changed = true;
   }
-  return changed ? { record: { ...record, state, events }, changed } : { record, changed: false };
+  return changed
+    ? { record: { ...record, state, events }, changed }
+    : { record, changed: false };
 }

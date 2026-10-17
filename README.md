@@ -20,6 +20,17 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Environment variables
+
+Copy these into `.env.local` (gitignored) for local development, and set them
+in the Vercel project settings for production.
+
+| Variable      | Required | Description                                                                                                          |
+| ------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL`    | Yes      | Base domain used to build absolute invite links for online games. e.g. `http://localhost:3000` for dev. `POST /api/games` fails without it. |
+| `MONGODB_URI` | No       | MongoDB Atlas connection string. When unset, the server keeps games in an in-memory store (fine for local dev; games don't survive restarts). |
+| `MONGODB_DB`  | No       | Database name for game records. Defaults to `train`.                                                                  |
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
