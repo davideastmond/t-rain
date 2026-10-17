@@ -12,6 +12,7 @@ import {
   TRAPS_PER_PLAYER,
 } from "./constants";
 import type { MoveError } from "./movement";
+import type { NerfError } from "./nerf";
 import type { SetupError } from "./setup";
 import type { PlayerId } from "./types";
 
@@ -38,6 +39,15 @@ export const MOVE_ERROR_MESSAGES: Record<MoveError, string> = {
   occupied: "That tile is occupied — pieces block each other.",
   "exceeds-piece-cap": `A piece can spend at most ${MAX_POINTS_PER_PIECE_PER_TURN} points per turn.`,
   "insufficient-points": "Not enough movement points left in this turn's pool.",
+};
+
+export const NERF_ERROR_MESSAGES: Record<NerfError, string> = {
+  "wrong-phase": "Nerfing is only available while the game is being played.",
+  "not-your-turn": "It's not your turn.",
+  "no-token": "You need a nerf token — earn one by getting a piece across.",
+  "insufficient-points": "A nerf costs 3 movement points from the pool.",
+  "invalid-target":
+    "Pick an active enemy piece next to one of your active pieces.",
 };
 
 export function playerLabel(player: PlayerId): string {
