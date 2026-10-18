@@ -1,0 +1,65 @@
+# CPU Strategy
+
+How the T-rain CPU opponent thinks. Engine: `src/lib/game/cpu.ts`, wired into
+the local game page (`src/app/local/page.tsx`) via `chooseCpuAction`.
+
+## The one rule
+
+The CPU never sees what it shouldn't. Every decision is made from
+`sanitizeForPlayer(state, player)` — the exact filter an online server applies
+before sending a game to a client. The opponent's untriggered traps are
+removed; everything else (all pieces, spent/revealed traps, token counts,
+pool) is public. If the CPU ever gets a memory, it must be built from public
+information only.
+
+## Each tick
+
+1. **Nerf first** (NERF_SPEC.md §8). If `nerfTargets()` is non-empty — i.e. the
+   CPU holds a token, has 3+ pool points, and an enemy piece stands next to
+   one of its pieces — it eliminates the valid target closest to its goal row
+   (the most advanced enemy runner).
+2. **Otherwise, take the best route step** (see below).
+3. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
+   legal).
+
+## Pathfinding
+
+`findPathToGoal(view, pieceId)` runs Dijkstra over the 4-directional grid:
+
+- Stepping onto a tile costs its `costToEnter` (plains 1, forest 2).
+- Water is impassable; tiles occupied by any active piece are walls.
+- The goal is any tile on the owner's goal row.
+
+`chooseCpuStep` routes every active piece, then takes the first step of the
+best route:
+
+1. Lowest `totalCost`.
+2. Fewest steps — fewer tiles entered means fewer trap rolls.
+3. Random pick among remaining ties (seedable `rng`, so tests are deterministic).
+
+A route only counts if its first step is legal *right now* (checked against
+`legalStepTargets`), so the per-piece cap (3/turn), the shared pool, and
+newly-appeared blockers are all respected — the CPU switches pieces instead
+of stalling.
+
+Routes are recomputed every tick. There is no stored plan to go stale: the CPU
+naturally sticks with a piece while its route stays best and re-routes the
+moment a wall of pieces, a water pocket, or the per-piece cap changes the
+picture.
+
+## What it doesn't do
+
+- **Hidden traps are unknowable.** Untriggered opponent traps aren't in the
+  sanitized view, so no route can avoid them — same as a human. Spent
+  (triggered) traps are visible and harmless, so they need no avoiding.
+- **No multi-turn budgeting.** It spends the pool greedily each turn; the
+  engine's caps are the only restraint.
+- **No opponent modeling.** It doesn't predict or block the human's runners.
+
+## Tuning knobs
+
+- Tiebreak order in `chooseCpuStep` (cost → steps → random).
+- `findPathToGoal` treats every non-water, unoccupied tile as routable;
+  weighting tiles near known trap deaths would be the honest way to add
+  "trap memory" later.
+- The nerf heuristic (closest-to-goal target) lives in `chooseCpuAction`.
