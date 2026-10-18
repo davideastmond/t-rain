@@ -18,6 +18,7 @@
 import { tileIndex } from "./board";
 import { BOARD_HEIGHT, GOAL_ROW, PIECES_TO_WIN } from "./constants";
 import { legalStepTargets } from "./movement";
+import { nerfTargets } from "./nerf";
 import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./types";
 
 /**
@@ -38,6 +39,22 @@ export interface CpuStep {
   to: Position;
 }
 
+/**
+ * One CPU decision: a step, or a nerf.
+ */
+export type CpuAction =
+  | { kind: "step"; pieceId: string; to: Position }
+  | { kind: "nerf"; targetPieceId: string };
+
+/**
+ * Choose one action for `player` from their sanitized view. Nerf first,
+ * per NERF_SPEC.md §8: when holding a token with pool to spend, eliminate
+ * the valid target closest to our goal row — the most advanced enemy
+ * runner. (nerfTargets already requires a token and pool, so a non-empty
+ * result means a nerf is affordable.) Otherwise take the greedy step.
+ * Returns null when there's nothing legal to do, which is the page's cue
+ * to end the turn.
+ */
 /**
  * Choose one step for `player` from their sanitized view. Returns null
  * when there's nothing legal to do (pool spent, pieces capped or blocked),
@@ -94,4 +111,34 @@ export function chooseCpuStep(
 /** How many pieces `player` still needs to get across to win. */
 export function piecesToWin(state: GameState, player: PlayerId): number {
   return PIECES_TO_WIN - state.scores[player];
+}
+
+/**
+ * Choose one action for `player` from their sanitized view. See the
+ * CpuAction docstring for the nerf-first policy.
+ */
+export function chooseCpuAction(
+  view: GameState,
+  player: PlayerId,
+  rng: () => number = Math.random,
+): CpuAction | null {
+  if (view.phase !== "playing" || view.currentPlayer !== player) return null;
+
+  const targets = nerfTargets(view, player);
+  if (targets.length > 0) {
+    const goalY = GOAL_ROW[player];
+    let best = targets[0];
+    for (const target of targets) {
+      if (
+        Math.abs(target.position.y - goalY) <
+        Math.abs(best.position.y - goalY)
+      ) {
+        best = target;
+      }
+    }
+    return { kind: "nerf", targetPieceId: best.id };
+  }
+
+  const step = chooseCpuStep(view, player, rng);
+  return step ? { kind: "step", ...step } : null;
 }
