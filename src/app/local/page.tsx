@@ -27,7 +27,7 @@ import Link from "next/link";
 
 import Board, { tileKey } from "@/components/Board";
 import SetupTray, { type SetupMode } from "@/components/SetupTray";
-import { chooseCpuStep, sanitizeForPlayer } from "@/lib/game/cpu";
+import { chooseCpuAction, sanitizeForPlayer } from "@/lib/game/cpu";
 import {
   CHARACTERS,
   MAX_NEUTRAL_TRAPS,
@@ -458,8 +458,11 @@ export default function LocalGamePage() {
   useEffect(() => {
     if (!cpuTurn) return;
     const timer = window.setTimeout(() => {
-      const step = chooseCpuStep(sanitizeForPlayer(game, CPU_PLAYER), CPU_PLAYER);
-      if (!step) {
+      const action = chooseCpuAction(
+        sanitizeForPlayer(game, CPU_PLAYER),
+        CPU_PLAYER,
+      );
+      if (!action) {
         const done = endTurn(game);
         if (done.ok) {
           setGame(done.state);
@@ -468,7 +471,28 @@ export default function LocalGamePage() {
         }
         return;
       }
-      const result = movePieceStep(game, step.pieceId, step.to);
+      if (action.kind === "nerf") {
+        const result = applyNerf(game, CPU_PLAYER, action.targetPieceId);
+        if (!result.ok) {
+          const done = endTurn(game);
+          if (done.ok) {
+            setGame(done.state);
+            setTurnCount((count) => count + 1);
+          }
+          return;
+        }
+        setGame(result.state);
+        setSelectedPieceId(null);
+        const victim = getPiece(game, action.targetPieceId)!;
+        const who = `${CHARACTERS[victim.character].emoji} ${CHARACTERS[victim.character].label}`;
+        setMessage(
+          result.state.phase === "finished"
+            ? `⚡ North's nerf eliminates your ${who} — and that ends the game!`
+            : `⚡ North's nerf eliminates your ${who}!`,
+        );
+        return;
+      }
+      const result = movePieceStep(game, action.pieceId, action.to);
       if (!result.ok) {
         const done = endTurn(game);
         if (done.ok) {
@@ -480,7 +504,7 @@ export default function LocalGamePage() {
       setGame(result.state);
       setSelectedPieceId(null);
 
-      const piece = getPiece(game, step.pieceId)!;
+      const piece = getPiece(game, action.pieceId)!;
       const who = `${CHARACTERS[piece.character].emoji} North ${CHARACTERS[piece.character].label}`;
       if (result.outcome.eliminated) {
         setMessage(
