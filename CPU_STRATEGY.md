@@ -18,8 +18,10 @@ information only.
    CPU holds a token, has 3+ pool points, and an enemy piece stands next to
    one of its pieces — it eliminates the valid target closest to its goal row
    (the most advanced enemy runner).
-2. **Otherwise, take the best route step** (see below).
-3. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
+2. **Spoiler mode** (see below): when the race is lost, intercept the most
+   imminent threat's path instead of advancing.
+3. **Otherwise, take the best route step** (see below).
+4. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
    legal).
 
 ## Pathfinding
@@ -46,6 +48,26 @@ Routes are recomputed every tick. There is no stored plan to go stale: the CPU
 naturally sticks with a piece while its route stays best and re-routes the
 moment a wall of pieces, a water pocket, or the per-piece cap changes the
 picture.
+
+## Spoiler mode
+
+Blocking is a bad trade while the race is live — every piece on defense is
+one not scoring, blockers are nerf-bait, and the board is usually too wide
+to funnel anyone. So the CPU only disrupts when racing is hopeless:
+`isSpoilerMode` is true when the opponent needs one more score and the CPU
+needs at least two. (Both needing one is a straight race — keep racing.)
+
+In spoiler mode, `chooseSpoilerStep` intercepts the most imminent threat:
+the enemy piece fewest steps from scoring (routed with the same Dijkstra).
+Each of our pieces is routed to the nearest tile of that threat's path;
+the fastest blocker wins, tie-broken by the tile earliest on the threat's
+path (sooner block) and then by tiles not adjacent to an enemy piece
+(don't feed the opponent's nerf). Standing on the path forces the threat
+to detour around the blocker. If no interception is reachable, it falls
+back to racing — a wasted turn helps nobody.
+
+Nerf still comes first in spoiler mode: targeted removal beats positional
+blocking.
 
 ## What it doesn't do
 
