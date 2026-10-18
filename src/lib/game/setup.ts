@@ -172,6 +172,8 @@ export function createGame(seed: number): GameState {
     spentThisTurn: {},
     scores: { north: 0, south: 0 },
     winner: null,
+    nerfTokens: { north: 0, south: 0 },
+    nerfTokensPending: { north: 0, south: 0 },
   };
 }
 

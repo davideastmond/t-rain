@@ -120,6 +120,17 @@ export interface GameState {
   /** Pieces scored ("across") per player. First to PIECES_TO_WIN wins. */
   scores: Record<PlayerId, number>;
   winner: PlayerId | null;
+  /**
+   * Spendable nerf tokens per player (see NERF_SPEC.md). A nerf eliminates
+   * one active opponent piece adjacent to one of yours for 1 token + 3
+   * pool points. Earned by scoring; capped at NERF_TOKEN_CAP.
+   */
+  nerfTokens: Record<PlayerId, number>;
+  /**
+   * Tokens earned this turn. They sit here until endTurn flips them into
+   * nerfTokens, so a token can never be spent the turn it was earned.
+   */
+  nerfTokensPending: Record<PlayerId, number>;
 }
 
 /**

@@ -19,6 +19,7 @@ import {
   GOAL_ROW,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
+  NERF_TOKEN_CAP,
   PIECES_TO_WIN,
 } from "./constants";
 import { otherPlayer } from "./setup";
@@ -186,6 +187,17 @@ export function movePieceStep(
   const scores = scored
     ? { ...state.scores, [piece.owner]: state.scores[piece.owner] + 1 }
     : state.scores;
+  // Scoring earns a nerf token into the pending count (usable from next
+  // turn). Tokens beyond NERF_TOKEN_CAP are lost — no stockpiling.
+  const nerfTokensPending =
+    scored &&
+    state.nerfTokens[piece.owner] + state.nerfTokensPending[piece.owner] <
+      NERF_TOKEN_CAP
+      ? {
+          ...state.nerfTokensPending,
+          [piece.owner]: state.nerfTokensPending[piece.owner] + 1,
+        }
+      : state.nerfTokensPending;
 
   // Win / loss, in one place, the moment the step resolves.
   let phase = state.phase;
@@ -212,6 +224,7 @@ export function movePieceStep(
       scores,
       phase,
       winner,
+      nerfTokensPending,
       movementPointsLeft: state.movementPointsLeft - cost,
       spentThisTurn: {
         ...state.spentThisTurn,
@@ -225,19 +238,29 @@ export function movePieceStep(
 /**
  * End the current player's turn: the other player takes over with a full
  * pool, and the per-piece tallies reset (unspent points are lost — no
- * banking). A player may end their turn at any point during play.
+ * banking). Tokens earned this turn flip from pending to usable. A player
+ * may end their turn at any point during play.
  */
 export function endTurn(
   state: GameState,
 ): { ok: true; state: GameState } | { ok: false; error: "wrong-phase" } {
   if (state.phase !== "playing") return { ok: false, error: "wrong-phase" };
+  const player = state.currentPlayer;
   return {
     ok: true,
     state: {
       ...state,
-      currentPlayer: otherPlayer(state.currentPlayer),
+      currentPlayer: otherPlayer(player),
       movementPointsLeft: MOVEMENT_POINTS_PER_TURN,
       spentThisTurn: {},
+      nerfTokens: {
+        ...state.nerfTokens,
+        [player]: Math.min(
+          NERF_TOKEN_CAP,
+          state.nerfTokens[player] + state.nerfTokensPending[player],
+        ),
+      },
+      nerfTokensPending: { ...state.nerfTokensPending, [player]: 0 },
     },
   };
 }

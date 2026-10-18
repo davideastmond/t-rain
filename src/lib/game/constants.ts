@@ -56,6 +56,14 @@ export const MOVEMENT_POINTS_PER_TURN = 10;
 /** Most movement points that may be spent on a single piece in one turn. */
 export const MAX_POINTS_PER_PIECE_PER_TURN = 3;
 
+// --- Nerf -------------------------------------------------------------------
+
+/** Most nerf tokens a player may hold (usable + pending). */
+export const NERF_TOKEN_CAP = 2;
+
+/** Movement points a nerf costs from the shared pool, on top of 1 token. */
+export const NERF_POOL_COST = 3;
+
 // --- Terrain generation -----------------------------------------------------
 
 /** Approximate share of tiles generated as forest. The rest (after water) is plains. */

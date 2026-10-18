@@ -118,6 +118,7 @@ export type NewEvent =
     }
   | { type: "turn-ended"; player: PlayerId }
   | { type: "forfeited"; player: PlayerId }
+  | { type: "nerfed"; player: PlayerId; targetPieceId: string }
   | {
       type: "game-finished";
       winner: PlayerId;
