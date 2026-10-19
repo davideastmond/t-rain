@@ -33,3 +33,15 @@ their advance. Worth remembering when tuning the CPU: positional
 blocking is a real human tactic, even though we decided it's a bad trade
 for the CPU (see `CPU_STRATEGY.md`, spoiler mode — disruption only when
 the race is already lost).
+
+## CPU Detects safe paths (proposed 2026-10-19)
+
+Source: observed in network PvP game, suggested as a potential CPU improvement.
+
+Idea: the CPU should identify paths that avoid enemy threats and terrain hazards, allowing it to move pieces more safely and strategically.
+
+Open design questions:
+
+- Detection: how far ahead should the CPU look to determine a safe path?
+- Trade-offs: should the CPU prioritize safety over speed or aggression?
+- Integration: how does this interact with existing CPU strategies, like disruption or opportunistic attacks?
