@@ -45,3 +45,19 @@ Open design questions:
 - Detection: how far ahead should the CPU look to determine a safe path?
 - Trade-offs: should the CPU prioritize safety over speed or aggression?
 - Integration: how does this interact with existing CPU strategies, like disruption or opportunistic attacks?
+
+Assessment (2026-10-19): mostly already covered or unknowable —
+
+- Terrain hazards are already handled: the Dijkstra router treats water
+  as impassable and prefers plains over forest by cost. Nothing safer to
+  compute there.
+- Hidden traps can't be routed around by anyone — they're invisible by
+  design. The only real defense is the existing tiebreak: fewer steps =
+  fewer trap rolls. Any "safety score" beyond that would be fake precision.
+- The one genuine gap is nerf avoidance (enemy pieces are visible), but
+  detouring around a *possible* nerf means more steps, i.e. more trap
+  rolls against 10 hidden traps — trading a maybe for a definitely.
+- Before building this: get battle-lab data showing nerfs are actually
+  what's killing CPU pieces. If anything, it'd be a small tiebreak weight
+  (prefer end tiles not adjacent to enemy pieces when the enemy holds a
+  token), not a separate pathfinder.
