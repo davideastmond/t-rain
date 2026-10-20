@@ -16,12 +16,14 @@ information only.
 
 1. **Nerf first** (NERF_SPEC.md §8). If `nerfTargets()` is non-empty — i.e. the
    CPU holds a token, has 3+ pool points, and an enemy piece stands next to
-   one of its pieces — it eliminates the valid target closest to its goal row
+   one of its pieces — it eliminates the valid target closest to scoring
    (the most advanced enemy runner).
-2. **Spoiler mode** (see below): when the race is lost, intercept the most
+2. **Nerf hunting** (see below): holding a token with no adjacent target,
+   route a piece next to a top runner to manufacture the nerf this turn.
+3. **Spoiler mode** (see below): when the race is lost, intercept the most
    imminent threat's path instead of advancing.
-3. **Otherwise, take the best route step** (see below).
-4. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
+4. **Otherwise, take the best route step** (see below).
+5. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
    legal).
 
 ## Pathfinding
@@ -49,6 +51,29 @@ naturally sticks with a piece while its route stays best and re-routes the
 moment a wall of pieces, a water pocket, or the per-piece cap changes the
 picture.
 
+## Nerf hunting
+
+The opportunistic nerf only fires when a runner blunders next to a CPU
+piece. `chooseNerfHuntStep` manufactures the opportunity instead: holding
+a token, the CPU routes one of its pieces to a tile adjacent to one of
+the opponent's two most advanced runners, and the nerf-first check fires
+later in the same turn once adjacency holds. It's the human play —
+defend your zone, walk up to the runner, delete it — bounded so it can't
+turn into a brawl:
+
+- **Targets**: the two most advanced enemy runners (fewest rows from
+  scoring). In spoiler mode, only the single most advanced — a hunt
+  never spends the pool a last-ditch interception needs.
+- **This turn only**: the hunter's whole route must fit its remaining
+  per-piece cap *and* leave 3 pool points for the nerf itself. If the
+  kill can't complete this turn, the CPU doesn't start it.
+- **Never when one score from winning**: at `piecesToWin == 1` the CPU
+  just races.
+
+Elimination beats interception, so hunting outranks spoiler mode: if
+the imminent scorer can be killed outright this turn, that's better
+than standing in its way.
+
 ## Spoiler mode
 
 Blocking is a bad trade while the race is live — every piece on defense is
@@ -67,7 +92,9 @@ to detour around the blocker. If no interception is reachable, it falls
 back to racing — a wasted turn helps nobody.
 
 Nerf still comes first in spoiler mode: targeted removal beats positional
-blocking.
+blocking. Hunting does too — but restricted to the most advanced runner,
+so it can only ever spend pool on killing the piece spoiler mode exists
+to stop.
 
 ## What it doesn't do
 
@@ -76,7 +103,8 @@ blocking.
   (triggered) traps are visible and harmless, so they need no avoiding.
 - **No multi-turn budgeting.** It spends the pool greedily each turn; the
   engine's caps are the only restraint.
-- **No opponent modeling.** It doesn't predict or block the human's runners.
+- **No opponent modeling.** It doesn't predict where runners will move;
+  hunting and spoiler mode react to where runners are, not where they'll be.
 
 ## Tuning knobs
 
@@ -84,4 +112,6 @@ blocking.
 - `findPathToGoal` treats every non-water, unoccupied tile as routable;
   weighting tiles near known trap deaths would be the honest way to add
   "trap memory" later.
-- The nerf heuristic (closest-to-goal target) lives in `chooseCpuAction`.
+- The nerf heuristic (most-advanced target) lives in `chooseCpuAction`;
+  the hunt scope (top-2 targets, top-1 in spoiler mode, this-turn
+  feasibility) lives in `chooseNerfHuntStep`.
