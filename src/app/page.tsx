@@ -139,6 +139,15 @@ export default function LandingPage() {
         </section>
       </div>
 
+      <p className="text-center text-sm">
+        <Link
+          href="/rules"
+          className="text-emerald-400 transition hover:text-emerald-300"
+        >
+          📖 New to T-rain? Read how to play →
+        </Link>
+      </p>
+
       <p className="text-center text-xs text-neutral-600">
         15 creatures each · 10 hidden traps each · 10 movement points a turn ·
         first to {PIECES_TO_WIN} across wins
