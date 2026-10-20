@@ -136,6 +136,7 @@ export default function LocalGamePage() {
       owner: LOCAL_PLAYER,
       position: draftPieces[character]!,
       status: "active" as const,
+      hasBridge: false,
     }));
   }, [game.pieces, southApplied, draftPieces]);
 

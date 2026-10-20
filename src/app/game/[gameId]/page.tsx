@@ -286,6 +286,7 @@ function GameClient() {
         owner: seat,
         position: draftPieces[character]!,
         status: "active" as const,
+        hasBridge: false,
       }));
     }
     return netState.pieces;

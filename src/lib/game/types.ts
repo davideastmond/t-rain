@@ -78,6 +78,12 @@ export interface Piece {
   owner: PlayerId;
   position: Position;
   status: "active" | "scored" | "eliminated";
+  /**
+   * True while the piece holds a mystery-box bridge (POWERUPS_SPEC.md):
+   * it may cross one water tile. Set on collection, spent on water
+   * entry, lost when the piece is eliminated.
+   */
+  hasBridge: boolean;
 }
 
 /**
@@ -89,6 +95,21 @@ export interface Trap {
   owner: PlayerId;
   position: Position;
   triggered: boolean;
+}
+
+/** What a mystery box turned out to contain, rolled at collection time. */
+export type MysteryBoxOutcome = "extra-steps" | "bridge" | "booby-trap";
+
+/**
+ * A mystery box (POWERUPS_SPEC.md): a public raid target generated with
+ * the board — one mirrored pair, one in each player's zone. Only the
+ * *other* player may collect it (stepping onto its tile); for the home
+ * player it is inert. `collected` flips when the roll happens, whatever
+ * the outcome was.
+ */
+export interface MysteryBox {
+  position: Position;
+  collected: boolean;
 }
 
 /**
@@ -131,6 +152,19 @@ export interface GameState {
    * nerfTokens, so a token can never be spent the turn it was earned.
    */
   nerfTokensPending: Record<PlayerId, number>;
+  /** The game's mystery boxes (POWERUPS_SPEC.md). Public to both players. */
+  mysteryBoxes: MysteryBox[];
+  /**
+   * Free movement points per piece for this turn, keyed by piece id,
+   * granted by a mystery box's extra-steps outcome. Spent before pool
+   * points and exempt from the per-piece cap; reset to {} at end of turn.
+   */
+  bonusPoints: Record<string, number>;
+  /**
+   * How many mystery boxes have been rolled in this game. Seeds the roll
+   * stream, so seed + move history reproduces every roll exactly.
+   */
+  boxRolls: number;
 }
 
 /**

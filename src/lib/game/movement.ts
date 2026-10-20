@@ -13,9 +13,11 @@
 // is pure: states go in, new states come out, nothing is mutated.
 
 import { tileIndex } from "./board";
+import { boxCollector, mysteryBoxAt, rollMysteryBox } from "./boxes";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
+  EXTRA_STEPS_POINTS,
   GOAL_ROW,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
@@ -26,6 +28,7 @@ import { otherPlayer } from "./setup";
 import {
   TERRAIN_INFO,
   type GameState,
+  type MysteryBoxOutcome,
   type Piece,
   type Position,
 } from "./types";
@@ -52,6 +55,8 @@ export interface StepOutcome {
   eliminated: boolean;
   /** True when the step reached the goal row: the piece scored. */
   scored: boolean;
+  /** The mystery box outcome when this step collected one, else null. */
+  box: MysteryBoxOutcome | null;
 }
 
 export type StepResult =
@@ -114,10 +119,17 @@ export function canStep(
   if (!info.passable) return { ok: false, error: "on-water" };
   if (pieceAt(state, to)) return { ok: false, error: "occupied" };
 
-  if ((state.spentThisTurn[pieceId] ?? 0) + info.costToEnter > MAX_POINTS_PER_PIECE_PER_TURN) {
+  // Free points (a mystery box's extra steps) pay first: only the part
+  // of the cost they don't cover draws on the pool, and only that part
+  // counts toward the per-piece cap.
+  const fromPool = Math.max(
+    0,
+    info.costToEnter - (state.bonusPoints[pieceId] ?? 0),
+  );
+  if ((state.spentThisTurn[pieceId] ?? 0) + fromPool > MAX_POINTS_PER_PIECE_PER_TURN) {
     return { ok: false, error: "exceeds-piece-cap" };
   }
-  if (info.costToEnter > state.movementPointsLeft) {
+  if (fromPool > state.movementPointsLeft) {
     return { ok: false, error: "insufficient-points" };
   }
   return { ok: true };
@@ -140,13 +152,18 @@ export function legalStepTargets(state: GameState, pieceId: string): Position[] 
 /**
  * Move one piece one step, resolving everything the step causes:
  *
- * 1. The cost is paid from the shared pool and added to the piece's tally.
+ * 1. The cost is paid — the piece's free points (mystery box) first,
+ *    then the shared pool; only the pool part joins the piece's tally.
  * 2. Traps resolve on entry, before anything else: if the destination holds
  *    an opponent's untriggered trap, it fires — the trap is spent and
  *    revealed, the piece is eliminated (even on the goal row: a trapped
  *    goal tile does not score).
- * 3. Otherwise, if the destination is the piece's goal row, it scores.
- * 4. Winning and losing are checked immediately: reaching PIECES_TO_WIN
+ * 3. A mystery box on the destination is collected on entry when the
+ *    piece belongs to its collector: the roll grants free points or a
+ *    bridge, or booby-traps the piece (eliminated, like a trap). A box
+ *    tile never holds a trap, so steps 2 and 3 can't coincide.
+ * 4. Otherwise, if the destination is the piece's goal row, it scores.
+ * 5. Winning and losing are checked immediately: reaching PIECES_TO_WIN
  *    scored wins; dropping below PIECES_TO_WIN pieces still able to score
  *    (active + already scored) loses on the spot.
  */
@@ -160,6 +177,9 @@ export function movePieceStep(
 
   const piece = getPiece(state, pieceId)!;
   const cost = TERRAIN_INFO[state.tiles[tileIndex(to.x, to.y)].terrain].costToEnter;
+  // Free points pay first; the pool covers the rest (see canStep).
+  const fromBonus = Math.min(state.bonusPoints[pieceId] ?? 0, cost);
+  const fromPool = cost - fromBonus;
 
   // Whose trap, if any, is waiting on the destination? Only the opponent's
   // traps can hurt this piece; its owner's traps are safe to stand on.
@@ -169,14 +189,30 @@ export function movePieceStep(
       trap.owner !== piece.owner &&
       samePosition(trap.position, to),
   );
-  const eliminated = trapIndex >= 0;
+  const trapped = trapIndex >= 0;
+
+  // Mystery box collection, on entry like traps. For the home player the
+  // box is inert; only its collector rolls.
+  const box = mysteryBoxAt(state, to);
+  const collects =
+    !trapped &&
+    box !== undefined &&
+    !box.collected &&
+    boxCollector(to) === piece.owner;
+  const boxOutcome = collects ? rollMysteryBox(state) : null;
+
+  const eliminated = trapped || boxOutcome === "booby-trap";
   const scored = !eliminated && to.y === GOAL_ROW[piece.owner];
 
   const pieces = state.pieces.map((p) => {
     if (p.id !== pieceId) return p;
     if (eliminated) return { ...p, position: to, status: "eliminated" as const };
     if (scored) return { ...p, position: to, status: "scored" as const };
-    return { ...p, position: to };
+    return {
+      ...p,
+      position: to,
+      hasBridge: p.hasBridge || boxOutcome === "bridge",
+    };
   });
   const traps =
     trapIndex >= 0
@@ -184,6 +220,19 @@ export function movePieceStep(
           i === trapIndex ? { ...trap, triggered: true } : trap,
         )
       : state.traps;
+  const mysteryBoxes = collects
+    ? state.mysteryBoxes.map((b) => (b === box ? { ...b, collected: true } : b))
+    : state.mysteryBoxes;
+  let bonusPoints = state.bonusPoints;
+  if (fromBonus > 0 || boxOutcome === "extra-steps") {
+    bonusPoints = {
+      ...state.bonusPoints,
+      [pieceId]:
+        (state.bonusPoints[pieceId] ?? 0) -
+        fromBonus +
+        (boxOutcome === "extra-steps" ? EXTRA_STEPS_POINTS : 0),
+    };
+  }
   const scores = scored
     ? { ...state.scores, [piece.owner]: state.scores[piece.owner] + 1 }
     : state.scores;
@@ -225,21 +274,25 @@ export function movePieceStep(
       phase,
       winner,
       nerfTokensPending,
-      movementPointsLeft: state.movementPointsLeft - cost,
+      mysteryBoxes,
+      bonusPoints,
+      boxRolls: state.boxRolls + (collects ? 1 : 0),
+      movementPointsLeft: state.movementPointsLeft - fromPool,
       spentThisTurn: {
         ...state.spentThisTurn,
-        [pieceId]: (state.spentThisTurn[pieceId] ?? 0) + cost,
+        [pieceId]: (state.spentThisTurn[pieceId] ?? 0) + fromPool,
       },
     },
-    outcome: { cost, eliminated, scored },
+    outcome: { cost, eliminated, scored, box: boxOutcome },
   };
 }
 
 /**
  * End the current player's turn: the other player takes over with a full
  * pool, and the per-piece tallies reset (unspent points are lost — no
- * banking). Tokens earned this turn flip from pending to usable. A player
- * may end their turn at any point during play.
+ * banking). Tokens earned this turn flip from pending to usable, and
+ * unused mystery-box free points expire. A player may end their turn at
+ * any point during play.
  */
 export function endTurn(
   state: GameState,
@@ -253,6 +306,7 @@ export function endTurn(
       currentPlayer: otherPlayer(player),
       movementPointsLeft: MOVEMENT_POINTS_PER_TURN,
       spentThisTurn: {},
+      bonusPoints: {},
       nerfTokens: {
         ...state.nerfTokens,
         [player]: Math.min(
