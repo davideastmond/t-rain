@@ -63,7 +63,7 @@ export default function LandingPage() {
         </p>
       </header>
 
-      <div className="grid w-full gap-4 sm:grid-cols-2">
+      <div className="grid w-full gap-4 sm:grid-cols-3">
         <section className="flex flex-col items-center gap-3 rounded-xl bg-neutral-900 px-6 py-6 text-center">
           <p className="text-3xl">🖥️</p>
           <h2 className="text-xl font-semibold">Local game</h2>
@@ -75,6 +75,21 @@ export default function LandingPage() {
             className="mt-1 rounded-full bg-emerald-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
           >
             Play local →
+          </Link>
+        </section>
+
+        <section className="flex flex-col items-center gap-3 rounded-xl bg-neutral-900 px-6 py-6 text-center">
+          <p className="text-3xl">🤖</p>
+          <h2 className="text-xl font-semibold">CPU battle lab</h2>
+          <p className="text-sm text-neutral-400">
+            Watch CPU strategies play each other, run tournaments, and
+            download JSONL logs for tuning.
+          </p>
+          <Link
+            href="/cpu-battle"
+            className="mt-1 rounded-full bg-emerald-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+          >
+            Open the lab →
           </Link>
         </section>
 
@@ -123,6 +138,15 @@ export default function LandingPage() {
           {error && <p className="text-sm text-red-400">{error}</p>}
         </section>
       </div>
+
+      <p className="text-center text-sm">
+        <Link
+          href="/rules"
+          className="text-emerald-400 transition hover:text-emerald-300"
+        >
+          📖 New to T-rain? Read how to play →
+        </Link>
+      </p>
 
       <p className="text-center text-xs text-neutral-600">
         15 creatures each · 10 hidden traps each · 10 movement points a turn ·
