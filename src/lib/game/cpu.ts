@@ -13,14 +13,23 @@
 // costs, treating water and occupied tiles as walls); the CPU takes the
 // first step of the best route. Routes are recomputed every tick, so the
 // CPU naturally sticks with a piece while its route stays best and
-// switches when it gets blocked or capped. When the opponent is one score
-// from winning and the race is lost, it switches to spoiler mode:
-// intercepting the most imminent threat's path instead of advancing.
+// switches when it gets blocked or capped. When it holds a nerf token
+// but no target is adjacent yet, it hunts: routing a piece next to one
+// of the opponent's most advanced runners to manufacture the nerf. When
+// the opponent is one score from winning and the race is lost, it
+// switches to spoiler mode: intercepting the most imminent threat's path
+// instead of advancing.
 // It does not know the opponent's hidden traps, so it can't play around
 // them — exactly like a human facing hidden information.
 
 import { tileIndex } from "./board";
-import { BOARD_WIDTH, GOAL_ROW, PIECES_TO_WIN } from "./constants";
+import {
+  BOARD_WIDTH,
+  GOAL_ROW,
+  MAX_POINTS_PER_PIECE_PER_TURN,
+  NERF_POOL_COST,
+  PIECES_TO_WIN,
+} from "./constants";
 import { legalStepTargets } from "./movement";
 import { nerfTargets } from "./nerf";
 import { otherPlayer } from "./setup";
@@ -304,14 +313,93 @@ export function chooseSpoilerStep(
 }
 
 /**
+ * One nerf-hunting step for `player`: when holding a token but no target
+ * is adjacent yet, manufacture the nerf — route one of our pieces to a
+ * tile adjacent to one of the opponent's most advanced runners, so the
+ * nerf-first check in chooseCpuAction fires later this same turn.
+ *
+ * Targets are the opponent's two most advanced runners (fewest rows from
+ * scoring), most advanced first — in spoiler mode only the single most
+ * advanced, so a hunt never spends the pool a last-ditch interception
+ * needs. A hunt only counts when it can finish this turn: the hunter's
+ * whole route must fit its remaining per-piece cap and leave
+ * NERF_POOL_COST in the pool for the nerf itself. Among hunters for a
+ * target, cheapest route wins, rng breaks ties. One score from winning,
+ * the CPU doesn't hunt at all — it races. Returns null when no hunt is
+ * viable.
+ */
+export function chooseNerfHuntStep(
+  view: GameState,
+  player: PlayerId,
+  rng: () => number = Math.random,
+): CpuStep | null {
+  if (view.phase !== "playing" || view.currentPlayer !== player) return null;
+  if (view.nerfTokens[player] < 1) return null;
+  if (piecesToWin(view, player) <= 1) return null;
+  const foe = otherPlayer(player);
+  const foeGoalY = GOAL_ROW[foe];
+
+  const targets = view.pieces
+    .filter((p) => p.owner === foe && p.status === "active")
+    .sort(
+      (a, b) =>
+        Math.abs(a.position.y - foeGoalY) - Math.abs(b.position.y - foeGoalY),
+    )
+    .slice(0, isSpoilerMode(view, player) ? 1 : 2);
+
+  for (const target of targets) {
+    const bids: { pieceId: string; step: Position; cost: number }[] = [];
+    for (const hunter of view.pieces) {
+      if (hunter.owner !== player || hunter.status !== "active") continue;
+      const path = findPath(
+        view,
+        hunter.id,
+        (pos) =>
+          Math.abs(pos.x - target.position.x) +
+            Math.abs(pos.y - target.position.y) ===
+          1,
+      );
+      if (!path || path.steps.length === 0) continue;
+      if (path.totalCost > view.movementPointsLeft - NERF_POOL_COST) continue;
+      if (
+        (view.spentThisTurn[hunter.id] ?? 0) + path.totalCost >
+        MAX_POINTS_PER_PIECE_PER_TURN
+      ) {
+        continue;
+      }
+      const [first] = path.steps;
+      if (
+        !legalStepTargets(view, hunter.id).some(
+          (t) => t.x === first.x && t.y === first.y,
+        )
+      ) {
+        continue;
+      }
+      bids.push({ pieceId: hunter.id, step: first, cost: path.totalCost });
+    }
+    if (bids.length === 0) continue;
+    bids.sort((a, b) => a.cost - b.cost);
+    const best = bids[0];
+    const tied = bids.filter((b) => b.cost === best.cost);
+    const pick = tied[Math.floor(rng() * tied.length)];
+    return { pieceId: pick.pieceId, to: pick.step };
+  }
+  return null;
+}
+
+/**
  * Choose one action for `player` from their sanitized view, in priority
  * order:
  *   1. Nerf first (NERF_SPEC.md §8): when holding a token with pool to
- *      spend, eliminate the valid target closest to our goal row.
- *   2. Spoiler mode: when the opponent needs one more score and we need
+ *      spend, eliminate the valid target closest to scoring (the most
+ *      advanced enemy runner).
+ *   2. Nerf hunting: holding a token but nothing adjacent yet — route a
+ *      piece next to a top runner so the nerf fires later this turn.
+ *      Elimination beats interception, so this outranks spoiler mode.
+ *   3. Spoiler mode: when the opponent needs one more score and we need
  *      at least two, race is hopeless — intercept the most imminent
  *      threat's path instead of advancing.
- *   3. Otherwise take the best pathfinding step.
+ *   4. Otherwise take the best pathfinding step.
  * Returns null when there's nothing legal to do, which is the page's cue
  * to end the turn.
  */
@@ -324,18 +412,21 @@ export function chooseCpuAction(
 
   const targets = nerfTargets(view, player);
   if (targets.length > 0) {
-    const goalY = GOAL_ROW[player];
+    const foeGoalY = GOAL_ROW[otherPlayer(player)];
     let best = targets[0];
     for (const target of targets) {
       if (
-        Math.abs(target.position.y - goalY) <
-        Math.abs(best.position.y - goalY)
+        Math.abs(target.position.y - foeGoalY) <
+        Math.abs(best.position.y - foeGoalY)
       ) {
         best = target;
       }
     }
     return { kind: "nerf", targetPieceId: best.id };
   }
+
+  const hunt = chooseNerfHuntStep(view, player, rng);
+  if (hunt) return { kind: "step", ...hunt };
 
   if (isSpoilerMode(view, player)) {
     const spoiler = chooseSpoilerStep(view, player, rng);
