@@ -6,6 +6,10 @@ when it's accepted — never edit the rulebook from here.
 
 ## Bonus pickups (proposed 2026-10-19)
 
+**Graduated 2026-10-20 → `POWERUPS_SPEC.md`** ("mystery boxes": mirrored
+pair, invader-only collection, 45/45/10 mystery roll). The original
+proposal is kept below for the record.
+
 Source: suggested by a human opponent after a network PvP game.
 
 Randomly generated pickups on the map:
