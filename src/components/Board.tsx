@@ -2,8 +2,10 @@
 //
 // The colored-squares style lives here: one <div> per tile in a CSS grid,
 // background colour looked up from the biome's palette. Traps are a small
-// 💣 in the corner of the tile. There is deliberately no canvas — plain
-// DOM keeps everything styleable and clickable per tile.
+// 💣 in the corner of the tile. Mystery boxes are a 🎁 on their tile
+// (public — both players see both boxes), and a piece holding a bridge
+// wears a 🌉 badge. There is deliberately no canvas — plain DOM keeps
+// everything styleable and clickable per tile.
 //
 // Pieces live on a separate overlay layer above the grid, one absolutely
 // positioned marker per piece, so movement *animates*: each marker is
@@ -30,7 +32,14 @@ import {
   NEUTRAL_ROW,
 } from "@/lib/game/constants";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
-import type { BiomeId, Piece, Position, Tile, Trap } from "@/lib/game/types";
+import type {
+  BiomeId,
+  MysteryBox,
+  Piece,
+  Position,
+  Tile,
+  Trap,
+} from "@/lib/game/types";
 
 export function tileKey(position: Position): string {
   return `${position.x},${position.y}`;
@@ -41,6 +50,8 @@ interface BoardProps {
   biome: BiomeId;
   pieces?: Piece[];
   traps?: Trap[];
+  /** Mystery boxes to draw (🎁 on uncollected ones). Boxes are public. */
+  mysteryBoxes?: MysteryBox[];
   highlighted?: Set<string>;
   /** Tile keys to outline red — the nerf targeting mode uses this. */
   dangerHighlighted?: Set<string>;
@@ -56,6 +67,7 @@ export default function Board({
   biome,
   pieces = [],
   traps = [],
+  mysteryBoxes = [],
   highlighted,
   dangerHighlighted,
   selectedKey,
@@ -69,6 +81,13 @@ export default function Board({
   const trapByTile = new Map<number, Trap>();
   for (const trap of traps) {
     trapByTile.set(tileIndex(trap.position.x, trap.position.y), trap);
+  }
+  // Same for uncollected mystery boxes — collected ones disappear.
+  const boxByTile = new Map<number, MysteryBox>();
+  for (const box of mysteryBoxes) {
+    if (!box.collected) {
+      boxByTile.set(tileIndex(box.position.x, box.position.y), box);
+    }
   }
   const activePieces = pieces.filter((piece) => piece.status === "active");
 
@@ -89,6 +108,7 @@ export default function Board({
           const isDangerHighlighted =
             dangerHighlighted?.has(tileKey(tile.position)) ?? false;
           const trap = trapByTile.get(index);
+          const box = boxByTile.get(index);
 
           return (
             <div
@@ -117,6 +137,14 @@ export default function Board({
                   title={trap.triggered ? "Triggered trap" : "Trap"}
                 >
                   {trap.triggered ? "💥" : "💣"}
+                </span>
+              )}
+              {box && (
+                <span
+                  className="absolute bottom-0 left-0 text-[16px] leading-none"
+                  title="Mystery box — only the invader can collect it"
+                >
+                  🎁
                 </span>
               )}
             </div>
@@ -154,6 +182,14 @@ export default function Board({
               title={`${piece.owner === "north" ? "North" : "South"} ${CHARACTERS[piece.character].label}`}
             >
               {CHARACTERS[piece.character].emoji}
+              {piece.hasBridge && (
+                <span
+                  className="absolute -top-1.5 -right-1.5 text-[11px] leading-none"
+                  title="Holds a bridge — can cross one water tile"
+                >
+                  🌉
+                </span>
+              )}
             </span>
           </div>
         ))}
