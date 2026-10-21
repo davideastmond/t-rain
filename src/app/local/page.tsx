@@ -27,9 +27,11 @@ import Link from "next/link";
 
 import Board, { tileKey } from "@/components/Board";
 import SetupTray, { type SetupMode } from "@/components/SetupTray";
+import { tileIndex } from "@/lib/game/board";
 import { chooseCpuAction, sanitizeForPlayer } from "@/lib/game/cpu";
 import {
   CHARACTERS,
+  EXTRA_STEPS_POINTS,
   MAX_NEUTRAL_TRAPS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
@@ -69,6 +71,7 @@ import {
 import {
   type CharacterId,
   type GameState,
+  type MysteryBoxOutcome,
   type Piece,
   type PlayerId,
   type Position,
@@ -88,6 +91,31 @@ const MOVE_ERROR_MESSAGES: Record<MoveError, string> = {
   ...SHARED_MOVE_ERROR_MESSAGES,
   "not-your-turn": "That piece belongs to the other player.",
 };
+
+/** Narration for a mystery box collection (the booby trap is narrated
+    with the eliminations instead, so it isn't handled here). */
+function boxMessage(who: string, box: MysteryBoxOutcome): string {
+  switch (box) {
+    case "extra-steps":
+      return `🎁 ${who} opened a mystery box: +${EXTRA_STEPS_POINTS} free steps this turn!`;
+    case "bridge":
+      return `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`;
+    case "booby-trap":
+      return `🎁 ${who} opened a mystery box — 💥 booby trap!`;
+  }
+}
+
+/** The piece that drowned in an endTurn between two states, if any: it
+    was active on a water tile before, and eliminated after. */
+function drownedPiece(before: GameState, after: GameState): Piece | undefined {
+  return before.pieces.find(
+    (p) =>
+      p.status === "active" &&
+      before.tiles[tileIndex(p.position.x, p.position.y)].terrain ===
+        "water" &&
+      after.pieces.find((q) => q.id === p.id)?.status === "eliminated",
+  );
+}
 
 export default function LocalGamePage() {
   const [seedText, setSeedText] = useState(String(FIRST_SEED));
@@ -410,11 +438,19 @@ export default function LocalGamePage() {
     const who = `${CHARACTERS[selectedPiece.character].emoji} ${playerLabel(selectedPiece.owner)} ${CHARACTERS[selectedPiece.character].label}`;
     if (result.outcome.eliminated) {
       setSelectedPieceId(null);
-      setMessage(
-        result.state.phase === "finished"
-          ? `💥 ${who} stepped on a trap — and that ends the game!`
-          : `💥 ${who} stepped on a trap and was eliminated! The trap is now revealed.`,
-      );
+      if (result.outcome.box === "booby-trap") {
+        setMessage(
+          result.state.phase === "finished"
+            ? `${boxMessage(who, "booby-trap")} Eliminated — and that ends the game!`
+            : `${boxMessage(who, "booby-trap")} It was eliminated!`,
+        );
+      } else {
+        setMessage(
+          result.state.phase === "finished"
+            ? `💥 ${who} stepped on a trap — and that ends the game!`
+            : `💥 ${who} stepped on a trap and was eliminated! The trap is now revealed.`,
+        );
+      }
     } else if (result.outcome.scored) {
       setSelectedPieceId(null);
       const earnedToken =
@@ -425,6 +461,8 @@ export default function LocalGamePage() {
           ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}!`
           : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.${earnedToken ? " +1 ⚡ nerf token (usable next turn)." : ""}`,
       );
+    } else if (result.outcome.box) {
+      setMessage(boxMessage(who, result.outcome.box));
     } else {
       setMessage(null);
     }
@@ -437,6 +475,16 @@ export default function LocalGamePage() {
     setSelectedPieceId(null);
     setNerfArmed(false);
     setTurnCount((count) => count + 1);
+    const drowned = drownedPiece(game, result.state);
+    if (drowned) {
+      const who = `${CHARACTERS[drowned.character].emoji} ${playerLabel(drowned.owner)} ${CHARACTERS[drowned.character].label}`;
+      setMessage(
+        result.state.phase === "finished"
+          ? `🌊 ${who} drowned — it ended its turn on water, and that ends the game!`
+          : `🌊 ${who} drowned — it ended its turn on water!`,
+      );
+      return;
+    }
     setMessage(
       `${playerLabel(result.state.currentPlayer)}'s turn — ${MOVEMENT_POINTS_PER_TURN} fresh movement points.`,
     );
@@ -468,7 +516,17 @@ export default function LocalGamePage() {
         if (done.ok) {
           setGame(done.state);
           setTurnCount((count) => count + 1);
-          setMessage("North (CPU) ends its turn.");
+          const drowned = drownedPiece(game, done.state);
+          if (drowned) {
+            const who = `${CHARACTERS[drowned.character].emoji} North ${CHARACTERS[drowned.character].label}`;
+            setMessage(
+              done.state.phase === "finished"
+                ? `🌊 ${who} drowned — it ended its turn on water, and that ends the game!`
+                : `🌊 ${who} drowned — it ended its turn on water!`,
+            );
+          } else {
+            setMessage("North (CPU) ends its turn.");
+          }
         }
         return;
       }
@@ -508,17 +566,27 @@ export default function LocalGamePage() {
       const piece = getPiece(game, action.pieceId)!;
       const who = `${CHARACTERS[piece.character].emoji} North ${CHARACTERS[piece.character].label}`;
       if (result.outcome.eliminated) {
-        setMessage(
-          result.state.phase === "finished"
-            ? `💥 ${who} walked into one of your traps — and that ends the game!`
-            : `💥 ${who} walked into one of your traps and was eliminated!`,
-        );
+        if (result.outcome.box === "booby-trap") {
+          setMessage(
+            result.state.phase === "finished"
+              ? `${boxMessage(who, "booby-trap")} Eliminated — and that ends the game!`
+              : `${boxMessage(who, "booby-trap")} It was eliminated!`,
+          );
+        } else {
+          setMessage(
+            result.state.phase === "finished"
+              ? `💥 ${who} walked into one of your traps — and that ends the game!`
+              : `💥 ${who} walked into one of your traps and was eliminated!`,
+          );
+        }
       } else if (result.outcome.scored) {
         setMessage(
           result.state.phase === "finished"
             ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}! North wins.`
             : `🎉 ${who} crossed! North: ${result.state.scores.north}/${PIECES_TO_WIN}.`,
         );
+      } else if (result.outcome.box) {
+        setMessage(boxMessage(who, result.outcome.box));
       } else {
         setMessage("North (CPU) is thinking…");
       }
@@ -600,7 +668,8 @@ export default function LocalGamePage() {
             . Place {PIECES_PER_PLAYER} pieces in your back 3 rows, then{" "}
             {TRAPS_PER_PLAYER} traps in your zone + the neutral row (max{" "}
             {MAX_NEUTRAL_TRAPS} neutral). Legal tiles are outlined white — click
-            a placed piece to pick it back up.
+            a placed piece to pick it back up. 🎁 is a mystery box: yours waits
+            in the enemy zone, and a trap can&apos;t sit on one.
           </p>
 
           <SetupTray
@@ -627,6 +696,7 @@ export default function LocalGamePage() {
         biome={game.biome}
         pieces={displayPieces}
         traps={displayTraps}
+        mysteryBoxes={game.mysteryBoxes}
         highlighted={highlighted}
         dangerHighlighted={dangerHighlighted}
         piecesKey={gameId}
@@ -804,6 +874,9 @@ export default function LocalGamePage() {
                     {CHARACTERS[selectedPiece.character].label} selected, spent{" "}
                     {game.spentThisTurn[selectedPiece.id] ?? 0}/
                     {MAX_POINTS_PER_PIECE_PER_TURN}
+                    {(game.bonusPoints[selectedPiece.id] ?? 0) > 0 && (
+                      <> + {game.bonusPoints[selectedPiece.id]}🎁 free</>
+                    )}
                   </>
                 )}
                 {nerfArmed && (
