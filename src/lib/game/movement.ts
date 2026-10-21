@@ -23,6 +23,7 @@ import {
   MOVEMENT_POINTS_PER_TURN,
   NERF_TOKEN_CAP,
   PIECES_TO_WIN,
+  WATER_CROSS_COST,
 } from "./constants";
 import { otherPlayer } from "./setup";
 import {
@@ -88,6 +89,19 @@ export function pieceAt(state: GameState, position: Position): Piece | undefined
 }
 
 /**
+ * What it costs `piece` to step onto the tile at `to`: the terrain cost,
+ * except water — impassable normally, but a piece holding a mystery-box
+ * bridge may enter it for WATER_CROSS_COST (spending the bridge).
+ */
+function costToEnter(state: GameState, piece: Piece, to: Position): number {
+  const terrain = state.tiles[tileIndex(to.x, to.y)].terrain;
+  if (terrain === "water") {
+    return piece.hasBridge ? WATER_CROSS_COST : TERRAIN_INFO.water.costToEnter;
+  }
+  return TERRAIN_INFO[terrain].costToEnter;
+}
+
+/**
  * May `pieceId` step onto `to` right now? Checks, in order: the game is
  * being played, the piece exists, is still on the board, belongs to the
  * player whose turn it is, the step is one tile orthogonally (no diagonals,
@@ -115,8 +129,12 @@ export function canStep(
   }
 
   const terrain = state.tiles[tileIndex(to.x, to.y)].terrain;
-  const info = TERRAIN_INFO[terrain];
-  if (!info.passable) return { ok: false, error: "on-water" };
+  // Water is impassable — unless the piece holds a bridge (which the
+  // step spends). A piece already on water holds no bridge anymore, so
+  // it can only step back onto land: crossings are one tile wide.
+  if (terrain === "water" && !piece.hasBridge) {
+    return { ok: false, error: "on-water" };
+  }
   if (pieceAt(state, to)) return { ok: false, error: "occupied" };
 
   // Free points (a mystery box's extra steps) pay first: only the part
@@ -124,7 +142,7 @@ export function canStep(
   // counts toward the per-piece cap.
   const fromPool = Math.max(
     0,
-    info.costToEnter - (state.bonusPoints[pieceId] ?? 0),
+    costToEnter(state, piece, to) - (state.bonusPoints[pieceId] ?? 0),
   );
   if ((state.spentThisTurn[pieceId] ?? 0) + fromPool > MAX_POINTS_PER_PIECE_PER_TURN) {
     return { ok: false, error: "exceeds-piece-cap" };
@@ -154,6 +172,8 @@ export function legalStepTargets(state: GameState, pieceId: string): Position[] 
  *
  * 1. The cost is paid — the piece's free points (mystery box) first,
  *    then the shared pool; only the pool part joins the piece's tally.
+ *    A bridge holder may instead step onto water for WATER_CROSS_COST,
+ *    spending the bridge.
  * 2. Traps resolve on entry, before anything else: if the destination holds
  *    an opponent's untriggered trap, it fires — the trap is spent and
  *    revealed, the piece is eliminated (even on the goal row: a trapped
@@ -163,6 +183,8 @@ export function legalStepTargets(state: GameState, pieceId: string): Position[] 
  *    bridge, or booby-traps the piece (eliminated, like a trap). A box
  *    tile never holds a trap, so steps 2 and 3 can't coincide.
  * 4. Otherwise, if the destination is the piece's goal row, it scores.
+ *    (A water tile never scores, even on the goal row — the crossing
+ *    only counts once the piece reaches land.)
  * 5. Winning and losing are checked immediately: reaching PIECES_TO_WIN
  *    scored wins; dropping below PIECES_TO_WIN pieces still able to score
  *    (active + already scored) loses on the spot.
@@ -176,7 +198,9 @@ export function movePieceStep(
   if (!check.ok) return check;
 
   const piece = getPiece(state, pieceId)!;
-  const cost = TERRAIN_INFO[state.tiles[tileIndex(to.x, to.y)].terrain].costToEnter;
+  const cost = costToEnter(state, piece, to);
+  const enteredWater =
+    state.tiles[tileIndex(to.x, to.y)].terrain === "water";
   // Free points pay first; the pool covers the rest (see canStep).
   const fromBonus = Math.min(state.bonusPoints[pieceId] ?? 0, cost);
   const fromPool = cost - fromBonus;
@@ -202,7 +226,7 @@ export function movePieceStep(
   const boxOutcome = collects ? rollMysteryBox(state) : null;
 
   const eliminated = trapped || boxOutcome === "booby-trap";
-  const scored = !eliminated && to.y === GOAL_ROW[piece.owner];
+  const scored = !eliminated && !enteredWater && to.y === GOAL_ROW[piece.owner];
 
   const pieces = state.pieces.map((p) => {
     if (p.id !== pieceId) return p;
@@ -211,7 +235,9 @@ export function movePieceStep(
     return {
       ...p,
       position: to,
-      hasBridge: p.hasBridge || boxOutcome === "bridge",
+      // Entering water spends the bridge; collecting one grants it.
+      // (The two can't coincide — boxes never sit on water.)
+      hasBridge: (p.hasBridge || boxOutcome === "bridge") && !enteredWater,
     };
   });
   const traps =
@@ -293,16 +319,47 @@ export function movePieceStep(
  * banking). Tokens earned this turn flip from pending to usable, and
  * unused mystery-box free points expire. A player may end their turn at
  * any point during play.
+ *
+ * Drowning resolves first (POWERUPS_SPEC.md): a piece still standing on
+ * a water tile when its owner ends the turn is eliminated — it had to
+ * reach land the same turn it crossed. At most one piece per player can
+ * be on water (one bridge per player per game). The elimination runs
+ * the usual attrition check, so drowning can lose the game on the spot;
+ * in that case the turn never passes.
  */
 export function endTurn(
   state: GameState,
 ): { ok: true; state: GameState } | { ok: false; error: "wrong-phase" } {
   if (state.phase !== "playing") return { ok: false, error: "wrong-phase" };
   const player = state.currentPlayer;
+
+  let pieces = state.pieces;
+  const drowned = state.pieces.find(
+    (p) =>
+      p.owner === player &&
+      p.status === "active" &&
+      state.tiles[tileIndex(p.position.x, p.position.y)].terrain === "water",
+  );
+  if (drowned) {
+    pieces = state.pieces.map((p) =>
+      p.id === drowned.id ? { ...p, status: "eliminated" as const } : p,
+    );
+    const stillAbleToScore =
+      pieces.filter((p) => p.owner === player && p.status === "active")
+        .length + state.scores[player];
+    if (stillAbleToScore < PIECES_TO_WIN) {
+      return {
+        ok: true,
+        state: { ...state, pieces, phase: "finished", winner: otherPlayer(player) },
+      };
+    }
+  }
+
   return {
     ok: true,
     state: {
       ...state,
+      pieces,
       currentPlayer: otherPlayer(player),
       movementPointsLeft: MOVEMENT_POINTS_PER_TURN,
       spentThisTurn: {},
