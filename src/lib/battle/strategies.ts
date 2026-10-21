@@ -95,8 +95,8 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
   },
   {
     id: "pathfinder",
-    version: "pathfinder@v1",
-    label: "Pathfinder v1 (Dijkstra, no nerf/spoiler)",
+    version: "pathfinder@v2",
+    label: "Pathfinder v2 (Dijkstra + bridge routing, no nerf/spoiler)",
     choose: (view, player, rng) => {
       const step = chooseCpuStep(view, player, rng);
       return step ? { kind: "step", ...step } : null;
@@ -104,8 +104,8 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
   },
   {
     id: "full",
-    version: "full@v2",
-    label: "Full v2 (nerf + hunt + spoiler + pathfinder)",
+    version: "full@v3",
+    label: "Full v3 (nerf + hunt + spoiler + pathfinder)",
     choose: chooseCpuAction,
   },
 ];

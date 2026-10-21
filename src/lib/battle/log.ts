@@ -14,7 +14,12 @@
 // Nothing here is derived from a strategy's internals — only public engine
 // inputs and outcomes. A strategy's evals, if it has any, stay private.
 
-import type { CharacterId, PlayerId, TerrainType } from "../game/types";
+import type {
+  CharacterId,
+  MysteryBoxOutcome,
+  PlayerId,
+  TerrainType,
+} from "../game/types";
 
 /** [x, y] — compact and unambiguous. */
 export type Coord = [number, number];
@@ -44,6 +49,10 @@ export interface GameStartEvent {
     piecesToWin: number;
     nerfTokenCap: number;
     nerfPoolCost: number;
+    boxExtraStepsChance: number;
+    boxBridgeChance: number;
+    extraStepsPoints: number;
+    waterCrossCost: number;
   };
 }
 
@@ -73,6 +82,7 @@ export interface MoveEvent {
   /** Everything the step caused, in resolution order. */
   events: Array<
     | { kind: "trap"; pos: Coord; pieceEliminated: true }
+    | { kind: "box"; outcome: MysteryBoxOutcome }
     | { kind: "score"; pieceId: string; newScore: number }
   >;
 }
@@ -96,6 +106,8 @@ export interface TurnEndEvent {
   player: PlayerId;
   poolSpent: number;
   scores: Record<PlayerId, number>;
+  /** Set when a piece drowned at this endTurn (ended its turn on water). */
+  drownedPieceId?: string;
 }
 
 export interface GameEndEvent {

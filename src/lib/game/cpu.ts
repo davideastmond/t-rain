@@ -29,6 +29,7 @@ import {
   MAX_POINTS_PER_PIECE_PER_TURN,
   NERF_POOL_COST,
   PIECES_TO_WIN,
+  WATER_CROSS_COST,
 } from "./constants";
 import { legalStepTargets } from "./movement";
 import { nerfTargets } from "./nerf";
@@ -67,7 +68,7 @@ export interface CpuPath {
   pieceId: string;
   /** Tiles to step onto, in order, starting from the piece's position. */
   steps: Position[];
-  /** Sum of costToEnter over every step. */
+  /** Sum of the step costs over the whole route. */
   totalCost: number;
 }
 
@@ -80,6 +81,13 @@ const posKey = (p: Position): string => `${p.x},${p.y}`;
  * impassable, and tiles occupied by any active piece are walls. Hidden
  * (untriggered) opponent traps can't be routed around — they're not in
  * the view — and spent traps are harmless, so traps play no part.
+ *
+ * Bridge exception: a piece holding a mystery-box bridge may enter one
+ * water tile at WATER_CROSS_COST, exactly as the movement engine allows.
+ * The search tracks whether the bridge is still in hand (keys gain a
+ * ",spent" layer once it is used), so a route never plans a second
+ * water entry — and from a water tile only land is reachable, so routes
+ * always complete the crossing rather than stranding the piece.
  * Returns null when no route exists.
  */
 export function findPath(
@@ -100,7 +108,8 @@ export function findPath(
   const startKey = posKey(piece.position);
   const dist = new Map<string, number>([[startKey, 0]]);
   const prev = new Map<string, string>();
-  // Tiny priority queue (930 tiles max — a sorted array is plenty).
+  // Tiny priority queue (930 tiles max, two bridge layers — a sorted
+  // array is plenty).
   const queue: { key: string; d: number }[] = [{ key: startKey, d: 0 }];
   const DIRS: ReadonlyArray<readonly [number, number]> = [
     [1, 0],
@@ -114,11 +123,15 @@ export function findPath(
     queue.sort((a, b) => a.d - b.d);
     const { key, d } = queue.shift()!;
     if (d > (dist.get(key) ?? Infinity)) continue;
-    const [x, y] = key.split(",").map(Number);
+    const parts = key.split(",");
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const bridgeSpent = parts.length > 2;
     if (isGoal({ x, y })) {
       goalKey = key;
       break;
     }
+    const currentTerrain = view.tiles[tileIndex(x, y)].terrain;
     for (const [dx, dy] of DIRS) {
       const nx = x + dx;
       const ny = y + dy;
@@ -126,10 +139,22 @@ export function findPath(
         continue;
       }
       const tile = view.tiles[tileIndex(nx, ny)];
-      if (tile.terrain === "water") continue;
-      const nextKey = `${nx},${ny}`;
-      if (blocked.has(nextKey)) continue;
-      const nd = d + TERRAIN_INFO[tile.terrain].costToEnter;
+      let stepCost: number;
+      let nextSpent = bridgeSpent;
+      if (tile.terrain === "water") {
+        // Only a bridge holder, bridge still in hand, stepping from
+        // land — one water tile per route, like the engine enforces.
+        if (!piece.hasBridge || bridgeSpent || currentTerrain === "water") {
+          continue;
+        }
+        stepCost = WATER_CROSS_COST;
+        nextSpent = true;
+      } else {
+        stepCost = TERRAIN_INFO[tile.terrain].costToEnter;
+      }
+      if (blocked.has(`${nx},${ny}`)) continue;
+      const nextKey = nextSpent ? `${nx},${ny},spent` : `${nx},${ny}`;
+      const nd = d + stepCost;
       if (nd < (dist.get(nextKey) ?? Infinity)) {
         dist.set(nextKey, nd);
         prev.set(nextKey, key);

@@ -364,6 +364,7 @@ export default function CpuBattlePage() {
             biome={game.biome}
             pieces={game.pieces}
             traps={game.traps}
+            mysteryBoxes={game.mysteryBoxes}
             piecesKey={gameId}
           />
           <p className="mt-1 text-center text-xs text-neutral-600">

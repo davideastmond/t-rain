@@ -33,6 +33,12 @@ information only.
 - Stepping onto a tile costs its `costToEnter` (plains 1, forest 2).
 - Water is impassable; tiles occupied by any active piece are walls.
 - The goal is any tile on the owner's goal row.
+- **Bridge exception**: a piece holding a mystery-box bridge may route
+  through one water tile at cost 1. The search tracks whether the bridge
+  is still in hand, so a route never plans a second water entry, and
+  from a water tile only land is reachable — the crossing always
+  completes instead of stranding the piece mid-river. The CPU never
+  *seeks* boxes (v1); it just uses a bridge it happens to hold.
 
 `chooseCpuStep` routes every active piece, then takes the first step of the
 best route:
