@@ -100,7 +100,17 @@ export async function POST(
       cost: result.outcome.cost,
     },
   ];
-  if (result.outcome.eliminated) {
+  if (result.outcome.box) {
+    events.push({
+      type: "box-collected",
+      player: seat,
+      pieceId,
+      outcome: result.outcome.box,
+    });
+  }
+  if (result.outcome.eliminated && result.outcome.box !== "booby-trap") {
+    // A booby-trapped box is narrated by its box-collected event — the
+    // trap event is only for actual traps.
     events.push({ type: "trap-triggered", position: to, victimPieceId: pieceId });
   }
   if (result.outcome.scored) {

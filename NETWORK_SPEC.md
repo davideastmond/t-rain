@@ -129,7 +129,9 @@ POSTs can never silently clobber each other.
   `step { pieceId, from, to, cost }`, `trap-triggered { at,
   victimPieceId }`, `scored { pieceId, player, scores }`,
   `turn-ended { player }`, `setup-submitted { player }`,
-  `game-finished { winner, reason }`, `forfeited { player }`.
+  `game-finished { winner, reason }`, `forfeited { player }`,
+  `box-collected { player, pieceId, outcome }`,
+  `piece-drowned { player, pieceId }`.
   Entries are appended server-side on every mutation, each with a
   `seq`. Clients send `lastEventSeq` and receive only newer entries.
   Trap events reference only *triggered* traps, so the log leaks

@@ -1,14 +1,16 @@
 // POST /api/games/[gameId]/end-turn — pass the turn to the other player.
 
-import { endTurn } from "@/lib/game/movement";
+import { endTurn, findDrownedPiece } from "@/lib/game/movement";
+import type { PlayerId } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
 import {
   appendEvent,
   getGameStore,
   maybeAutoPlaceSetup,
   sanitizeForNetPlayer,
+  type NewEvent,
 } from "@/lib/net/games";
-import type { GameRecord } from "@/lib/net/store";
+import type { GameRecord, NetEvent } from "@/lib/net/store";
 
 export async function POST(
   request: Request,
@@ -42,8 +44,34 @@ export async function POST(
     return Response.json({ error: result.error }, { status: 403 });
   }
 
-  const events = appendEvent(record, { type: "turn-ended", player: seat });
-  const updated: GameRecord = { ...record, state: result.state, events };
+  // A piece still on water drowns at endTurn — announced before the
+  // handover. If the drowning ends the game, the turn never passes, so
+  // game-finished replaces turn-ended.
+  const newEvents: NewEvent[] = [];
+  const drowned = findDrownedPiece(record.state, result.state);
+  if (drowned) {
+    newEvents.push({
+      type: "piece-drowned",
+      player: seat,
+      pieceId: drowned.id,
+    });
+  }
+  if (result.state.phase === "finished" && result.state.winner) {
+    const winner: PlayerId = result.state.winner;
+    newEvents.push({ type: "game-finished", winner, reason: "attrition" });
+  } else {
+    newEvents.push({ type: "turn-ended", player: seat });
+  }
+
+  let eventsLog: NetEvent[] = record.events;
+  for (const event of newEvents) {
+    eventsLog = appendEvent({ ...record, events: eventsLog }, event);
+  }
+  const updated: GameRecord = {
+    ...record,
+    state: result.state,
+    events: eventsLog,
+  };
   if (!(await store.save(updated, record.version))) {
     return Response.json({ error: "version-conflict" }, { status: 409 });
   }
@@ -51,6 +79,6 @@ export async function POST(
     ok: true,
     version: record.version + 1,
     state: sanitizeForNetPlayer(result.state, seat),
-    events: events.slice(events.length - 1),
+    events: eventsLog.slice(eventsLog.length - newEvents.length),
   });
 }

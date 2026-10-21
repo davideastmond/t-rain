@@ -8,7 +8,12 @@ import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 
 import { sanitizeForPlayer } from "@/lib/game/cpu";
 import { autoPlaceSetup, createGame } from "@/lib/game/setup";
-import type { GameState, PlayerId, Position } from "@/lib/game/types";
+import type {
+  GameState,
+  MysteryBoxOutcome,
+  PlayerId,
+  Position,
+} from "@/lib/game/types";
 
 import { MongoGameStore } from "./mongo";
 import {
@@ -119,6 +124,13 @@ export type NewEvent =
   | { type: "turn-ended"; player: PlayerId }
   | { type: "forfeited"; player: PlayerId }
   | { type: "nerfed"; player: PlayerId; targetPieceId: string }
+  | {
+      type: "box-collected";
+      player: PlayerId;
+      pieceId: string;
+      outcome: MysteryBoxOutcome;
+    }
+  | { type: "piece-drowned"; player: PlayerId; pieceId: string }
   | {
       type: "game-finished";
       winner: PlayerId;
