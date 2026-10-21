@@ -6,10 +6,10 @@
 // one run after an algo tweak — the log tells you exactly which code played.
 // Bump the version string whenever you change what a strategy does.
 //
-// "full" is the shipped CPU (chooseCpuAction: nerf-first, spoiler mode,
-// pathfinding). "pathfinder" is the same Dijkstra routing without nerfs or
-// spoiler play. "greedy" is the original PR #9 heuristic, kept as the
-// baseline every fancier CPU has to beat.
+// "full" is the shipped CPU (chooseCpuAction: nerf-first, nerf hunting,
+// spoiler mode, pathfinding). "pathfinder" is the same Dijkstra routing
+// without nerfs or spoiler play. "greedy" is the original PR #9
+// heuristic, kept as the baseline every fancier CPU has to beat.
 
 import { tileIndex } from "../game/board";
 import {
@@ -95,8 +95,8 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
   },
   {
     id: "pathfinder",
-    version: "pathfinder@v1",
-    label: "Pathfinder v1 (Dijkstra, no nerf/spoiler)",
+    version: "pathfinder@v2",
+    label: "Pathfinder v2 (Dijkstra + bridge routing, no nerf/spoiler)",
     choose: (view, player, rng) => {
       const step = chooseCpuStep(view, player, rng);
       return step ? { kind: "step", ...step } : null;
@@ -104,8 +104,8 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
   },
   {
     id: "full",
-    version: "full@v1",
-    label: "Full v1 (nerf + spoiler + pathfinder)",
+    version: "full@v3",
+    label: "Full v3 (nerf + hunt + spoiler + pathfinder)",
     choose: chooseCpuAction,
   },
 ];

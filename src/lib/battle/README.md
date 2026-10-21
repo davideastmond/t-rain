@@ -7,7 +7,7 @@ of vibes.
 
 - `strategies.ts` — the registry. Every CPU the lab can field, each with a
   stable `id` and a `version` that moves when its behavior changes
-  (`greedy@v1`, `pathfinder@v1`, `full@v1`). The version is what logs
+  (`greedy@v1`, `pathfinder@v2`, `full@v3`). The version is what logs
   record, so tournaments stay comparable across algo tweaks.
 - `log.ts` — the JSONL event schema (v1) and the `BattleLog` collector.
 - `runner.ts` — `runBattleGame(seed, southId, northId, opts)`: the real
@@ -23,12 +23,15 @@ of vibes.
 |-------------|------------------------------------------------|
 | `game_start`| game begins: seed, strategy versions, tunables |
 | `setup`     | per player: piece placements + trap positions  |
-| `move`      | one step: from/to, cost, terrain, pool state, trap/score consequences |
+| `move`      | one step: from/to, cost, terrain, pool state, trap/score/box consequences |
 | `nerf`      | one nerf: target piece, tokens left            |
-| `turn_end`  | scores snapshot after each turn                |
+| `turn_end`  | scores snapshot after each turn; `drownedPieceId` when a piece drowned at the endTurn |
 | `game_end`  | winner, reason (`five_across`/`attrition`/`turn_cap`), totals |
 
 Coordinates are `[x, y]`. Every event carries `v: 1` (schema version).
+Mystery boxes: a collection appears in the `move` event's consequences as
+`{ kind: "box", outcome }`; a booby trap logs the box event only (never a
+fake trap event). `game_start` tunables include the box odds/costs.
 
 ## Replaying a game
 
@@ -41,7 +44,7 @@ rates, nerf conversion) from the raw stream.
 
 ## Tuning workflow
 
-1. Run a tournament: e.g. 100 games of `full@v1` vs `pathfinder@v1`.
+1. Run a tournament: e.g. 100 games of `full@v3` vs `pathfinder@v2`.
 2. Download the `.jsonl`, hand it to Baloo (or a script).
 3. Compare: win rate, average game length, eliminations per game, trap
    hit rate, nerf conversion rate, scores-over-time from `turn_end`.

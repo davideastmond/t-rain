@@ -64,6 +64,23 @@ export const NERF_TOKEN_CAP = 2;
 /** Movement points a nerf costs from the shared pool, on top of 1 token. */
 export const NERF_POOL_COST = 3;
 
+// --- Mystery boxes ----------------------------------------------------------
+
+/** Boxes per game: one mirrored pair, one in each player's zone. */
+export const MYSTERY_BOX_COUNT = 2;
+
+/** Chance a collected mystery box grants extra steps (POWERUPS_SPEC.md). */
+export const BOX_EXTRA_STEPS_CHANCE = 0.45;
+
+/** Chance a collected mystery box grants a bridge. The remainder booby-traps. */
+export const BOX_BRIDGE_CHANCE = 0.45;
+
+/** Free movement points the extra-steps outcome grants the collecting piece. */
+export const EXTRA_STEPS_POINTS = 2;
+
+/** Movement points a bridge holder pays to enter a water tile. */
+export const WATER_CROSS_COST = 1;
+
 // --- Terrain generation -----------------------------------------------------
 
 /** Approximate share of tiles generated as forest. The rest (after water) is plains. */

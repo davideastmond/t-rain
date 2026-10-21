@@ -17,6 +17,7 @@ import Board, { tileKey } from "@/components/Board";
 import SetupTray, { type SetupMode } from "@/components/SetupTray";
 import {
   CHARACTERS,
+  EXTRA_STEPS_POINTS,
   MAX_NEUTRAL_TRAPS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
@@ -113,6 +114,34 @@ function describeEvents(
           ? `${CHARACTERS[victim.character].emoji} ${playerLabel(victim.owner)} ${CHARACTERS[victim.character].label}`
           : "A piece";
         lines.push(`⚡ ${playerLabel(event.player)}'s nerf eliminates ${who}!`);
+        break;
+      }
+      case "box-collected": {
+        const piece = state.pieces.find((p) => p.id === event.pieceId);
+        const who = piece
+          ? `${CHARACTERS[piece.character].emoji} ${playerLabel(piece.owner)} ${CHARACTERS[piece.character].label}`
+          : "A piece";
+        if (event.outcome === "extra-steps") {
+          lines.push(
+            `🎁 ${who} opened a mystery box: +${EXTRA_STEPS_POINTS} free steps this turn!`,
+          );
+        } else if (event.outcome === "bridge") {
+          lines.push(
+            `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`,
+          );
+        } else {
+          lines.push(
+            `🎁 ${who} opened a mystery box — 💥 booby trap! It was eliminated!`,
+          );
+        }
+        break;
+      }
+      case "piece-drowned": {
+        const piece = state.pieces.find((p) => p.id === event.pieceId);
+        const who = piece
+          ? `${CHARACTERS[piece.character].emoji} ${playerLabel(piece.owner)} ${CHARACTERS[piece.character].label}`
+          : "A piece";
+        lines.push(`🌊 ${who} drowned — it ended its turn on water!`);
         break;
       }
       case "forfeited":
@@ -286,6 +315,7 @@ function GameClient() {
         owner: seat,
         position: draftPieces[character]!,
         status: "active" as const,
+        hasBridge: false,
       }));
     }
     return netState.pieces;
@@ -597,7 +627,9 @@ function GameClient() {
           <p className="text-center text-sm text-neutral-300">
             Place {PIECES_PER_PLAYER} pieces in your back 3 rows, then{" "}
             {TRAPS_PER_PLAYER} traps in your zone + the neutral row (max{" "}
-            {MAX_NEUTRAL_TRAPS} neutral). Legal tiles are outlined white.
+            {MAX_NEUTRAL_TRAPS} neutral). Legal tiles are outlined white. 🎁
+            is a mystery box: yours waits in the enemy zone, and a trap
+            can&apos;t sit on one.
             {setupSecondsLeft !== null && (
               <>
                 {" "}
@@ -634,6 +666,7 @@ function GameClient() {
         biome={netState.biome}
         pieces={displayPieces}
         traps={displayTraps}
+        mysteryBoxes={netState.mysteryBoxes}
         highlighted={highlighted}
         dangerHighlighted={dangerHighlighted}
         piecesKey={gameId}
@@ -784,6 +817,9 @@ function GameClient() {
                     {CHARACTERS[selectedPiece.character].label} selected, spent{" "}
                     {netState.spentThisTurn[selectedPiece.id] ?? 0}/
                     {MAX_POINTS_PER_PIECE_PER_TURN}
+                    {(netState.bonusPoints[selectedPiece.id] ?? 0) > 0 && (
+                      <> + {netState.bonusPoints[selectedPiece.id]}🎁 free</>
+                    )}
                   </>
                 )}
               </p>

@@ -9,7 +9,12 @@
 // implementation below is for local dev and tests; MongoDB is the
 // production backend (see mongo.ts).
 
-import type { GameState, PlayerId, Position } from "@/lib/game/types";
+import type {
+  GameState,
+  MysteryBoxOutcome,
+  PlayerId,
+  Position,
+} from "@/lib/game/types";
 
 // ---- Events ----
 // The per-game feed clients use for narration/animation. Filtered per
@@ -48,6 +53,17 @@ export type NetEvent =
       type: "nerfed";
       player: PlayerId;
       targetPieceId: string;
+    })
+  | (NetEventBase & {
+      type: "box-collected";
+      player: PlayerId;
+      pieceId: string;
+      outcome: MysteryBoxOutcome;
+    })
+  | (NetEventBase & {
+      type: "piece-drowned";
+      player: PlayerId;
+      pieceId: string;
     })
   | (NetEventBase & {
       type: "game-finished";
