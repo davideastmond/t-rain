@@ -597,6 +597,13 @@ function GameClient() {
       {inLobby && (
         <section className="flex flex-col items-center gap-3 rounded-lg bg-neutral-900 px-6 py-5 text-center">
           <p className="text-lg font-semibold">Waiting for your opponent…</p>
+          {!iSubmitted && (
+            <p className="max-w-md text-sm text-neutral-400">
+              Your opponent hasn&apos;t joined yet — you can place your
+              pieces and traps below now, at your own pace. The 120-second
+              setup clock only starts when they arrive.
+            </p>
+          )}
           {inviteLink ? (
             <>
               <p className="max-w-md text-sm text-neutral-400">
@@ -622,7 +629,7 @@ function GameClient() {
         </section>
       )}
 
-      {inSetup && !inLobby && !iSubmitted && (
+      {inSetup && !iSubmitted && (
         <>
           <p className="text-center text-sm text-neutral-300">
             Place {PIECES_PER_PLAYER} pieces in your back 3 rows, then{" "}
@@ -654,7 +661,7 @@ function GameClient() {
         </>
       )}
 
-      {inSetup && !inLobby && iSubmitted && !finished && (
+      {inSetup && iSubmitted && !finished && (
         <p className="text-center text-sm text-neutral-300">
           🔒 Your setup is locked in — waiting for{" "}
           {playerLabel(seat === "south" ? "north" : "south")}…
@@ -680,13 +687,13 @@ function GameClient() {
             ? undefined
             : playing
               ? handlePlayClick
-              : inSetup && !inLobby && !iSubmitted
+              : inSetup && !iSubmitted
                 ? handleSetupClick
                 : undefined
         }
       />
 
-      {inSetup && !inLobby && !iSubmitted && (
+      {inSetup && !iSubmitted && (
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
