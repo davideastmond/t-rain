@@ -375,3 +375,22 @@ export function endTurn(
     },
   };
 }
+
+/**
+ * The piece that drowned in an endTurn, found by diffing the states
+ * around the call: active on a water tile before, eliminated after.
+ * At most one piece can drown per turn (one bridge per player). The
+ * local page and the net end-turn route both announce it from this.
+ */
+export function findDrownedPiece(
+  before: GameState,
+  after: GameState,
+): Piece | undefined {
+  return before.pieces.find(
+    (p) =>
+      p.status === "active" &&
+      before.tiles[tileIndex(p.position.x, p.position.y)].terrain ===
+        "water" &&
+      after.pieces.find((q) => q.id === p.id)?.status === "eliminated",
+  );
+}

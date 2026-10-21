@@ -27,7 +27,6 @@ import Link from "next/link";
 
 import Board, { tileKey } from "@/components/Board";
 import SetupTray, { type SetupMode } from "@/components/SetupTray";
-import { tileIndex } from "@/lib/game/board";
 import { chooseCpuAction, sanitizeForPlayer } from "@/lib/game/cpu";
 import {
   CHARACTERS,
@@ -50,6 +49,7 @@ import {
 } from "@/lib/game/messages";
 import {
   endTurn,
+  findDrownedPiece,
   getPiece,
   legalStepTargets,
   movePieceStep,
@@ -103,18 +103,6 @@ function boxMessage(who: string, box: MysteryBoxOutcome): string {
     case "booby-trap":
       return `🎁 ${who} opened a mystery box — 💥 booby trap!`;
   }
-}
-
-/** The piece that drowned in an endTurn between two states, if any: it
-    was active on a water tile before, and eliminated after. */
-function drownedPiece(before: GameState, after: GameState): Piece | undefined {
-  return before.pieces.find(
-    (p) =>
-      p.status === "active" &&
-      before.tiles[tileIndex(p.position.x, p.position.y)].terrain ===
-        "water" &&
-      after.pieces.find((q) => q.id === p.id)?.status === "eliminated",
-  );
 }
 
 export default function LocalGamePage() {
@@ -475,7 +463,7 @@ export default function LocalGamePage() {
     setSelectedPieceId(null);
     setNerfArmed(false);
     setTurnCount((count) => count + 1);
-    const drowned = drownedPiece(game, result.state);
+    const drowned = findDrownedPiece(game, result.state);
     if (drowned) {
       const who = `${CHARACTERS[drowned.character].emoji} ${playerLabel(drowned.owner)} ${CHARACTERS[drowned.character].label}`;
       setMessage(
@@ -516,7 +504,7 @@ export default function LocalGamePage() {
         if (done.ok) {
           setGame(done.state);
           setTurnCount((count) => count + 1);
-          const drowned = drownedPiece(game, done.state);
+          const drowned = findDrownedPiece(game, done.state);
           if (drowned) {
             const who = `${CHARACTERS[drowned.character].emoji} North ${CHARACTERS[drowned.character].label}`;
             setMessage(
