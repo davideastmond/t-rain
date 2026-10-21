@@ -18,14 +18,23 @@
 
 import { tileIndex } from "../game/board";
 import {
+  BOX_BRIDGE_CHANCE,
+  BOX_EXTRA_STEPS_CHANCE,
+  EXTRA_STEPS_POINTS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
   NERF_POOL_COST,
   NERF_TOKEN_CAP,
   PIECES_TO_WIN,
+  WATER_CROSS_COST,
 } from "../game/constants";
 import { applyNerf } from "../game/nerf";
-import { endTurn, getPiece, movePieceStep } from "../game/movement";
+import {
+  endTurn,
+  findDrownedPiece,
+  getPiece,
+  movePieceStep,
+} from "../game/movement";
 import { autoPlaceSetup, createGame } from "../game/setup";
 import { createSeededRng } from "../game/rng";
 import type { GameState, PlayerId } from "../game/types";
@@ -113,6 +122,10 @@ export function createBattle(
       piecesToWin: PIECES_TO_WIN,
       nerfTokenCap: NERF_TOKEN_CAP,
       nerfPoolCost: NERF_POOL_COST,
+      boxExtraStepsChance: BOX_EXTRA_STEPS_CHANCE,
+      boxBridgeChance: BOX_BRIDGE_CHANCE,
+      extraStepsPoints: EXTRA_STEPS_POINTS,
+      waterCrossCost: WATER_CROSS_COST,
     },
   });
   for (const player of ["south", "north"] as PlayerId[]) {
@@ -146,16 +159,22 @@ export function createBattle(
   };
 }
 
-/** End the current player's turn inside the driver, logging turn_end. */
-function driverEndTurn(driver: BattleDriver, player: PlayerId): void {
+/** End the current player's turn inside the driver, logging turn_end.
+    Returns the piece that drowned at the endTurn, if one did. */
+function driverEndTurn(
+  driver: BattleDriver,
+  player: PlayerId,
+): { drowned?: { id: string; character: string } } {
   const poolSpent = MOVEMENT_POINTS_PER_TURN - driver.state.movementPointsLeft;
+  const before = driver.state;
   const done = endTurn(driver.state);
   if (!done.ok) {
     driver.finished = true;
-    return;
+    return {};
   }
   driver.state = done.state;
   driver.turns++;
+  const drowned = findDrownedPiece(before, done.state);
   driver.log.push({
     v: 1,
     type: "turn_end",
@@ -163,7 +182,11 @@ function driverEndTurn(driver: BattleDriver, player: PlayerId): void {
     player,
     poolSpent,
     scores: { ...driver.state.scores },
+    ...(drowned ? { drownedPieceId: drowned.id } : {}),
   });
+  return drowned
+    ? { drowned: { id: drowned.id, character: drowned.character } }
+    : {};
 }
 
 /**
@@ -185,8 +208,18 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
   const side = player === "south" ? "South" : "North";
 
   if (!action) {
-    driverEndTurn(driver, player);
-    return { narrations: [`${side} ends its turn.`], done: driver.finished };
+    const { drowned } = driverEndTurn(driver, player);
+    return {
+      narrations: [
+        `${side} ends its turn.`,
+        ...(drowned
+          ? [
+              `🌊 ${side} ${drowned.character} drowned — it ended its turn on water!`,
+            ]
+          : []),
+      ],
+      done: driver.finished,
+    };
   }
 
   if (action.kind === "nerf") {
@@ -231,7 +264,10 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
   driver.state = result.state;
   driver.actions++;
   const events: MoveEvent["events"] = [];
-  if (result.outcome.eliminated) {
+  if (result.outcome.box) {
+    events.push({ kind: "box", outcome: result.outcome.box });
+  }
+  if (result.outcome.eliminated && result.outcome.box !== "booby-trap") {
     events.push({ kind: "trap", pos: [action.to.x, action.to.y], pieceEliminated: true });
   } else if (result.outcome.scored) {
     events.push({ kind: "score", pieceId: action.pieceId, newScore: driver.state.scores[player] });
@@ -254,16 +290,25 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
   if (driver.state.phase === "finished") driver.finished = true;
 
   const label = `${side} ${piece.character}`;
-  const narrations = result.outcome.eliminated
+  const narrations = result.outcome.box
     ? [
-        `💥 ${label} steps to (${action.to.x}, ${action.to.y}) and hits a trap!`,
+        result.outcome.box === "booby-trap"
+          ? `🎁💥 ${label} opens a mystery box — booby trap! Eliminated.`
+          : result.outcome.box === "bridge"
+            ? `🎁 ${label} opens a mystery box: 🌉 bridge!`
+            : `🎁 ${label} opens a mystery box: +${EXTRA_STEPS_POINTS} free steps!`,
         ...(driver.finished ? ["That's attrition — game over."] : []),
       ]
-    : result.outcome.scored
+    : result.outcome.eliminated
       ? [
-          `🎉 ${label} crosses! ${side}: ${driver.state.scores[player]}/${PIECES_TO_WIN}${driver.finished ? " — game over!" : ""}`,
+          `💥 ${label} steps to (${action.to.x}, ${action.to.y}) and hits a trap!`,
+          ...(driver.finished ? ["That's attrition — game over."] : []),
         ]
-      : [];
+      : result.outcome.scored
+        ? [
+            `🎉 ${label} crosses! ${side}: ${driver.state.scores[player]}/${PIECES_TO_WIN}${driver.finished ? " — game over!" : ""}`,
+          ]
+        : [];
   return { narrations, done: driver.finished };
 }
 
