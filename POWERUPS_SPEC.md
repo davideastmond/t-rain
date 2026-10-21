@@ -71,6 +71,8 @@ just "race faster."
   a water tile, the piece is **eliminated ("drowned")**, resolved at
   `endTurn` before the turn passes. Drowning counts toward attrition
   like any other elimination.
+- A water tile **never scores**, even on the goal row — a crossing only
+  counts once the piece reaches land.
 - A piece on water still occupies its tile (blocks movement) and can
   still be nerfed (adjacency is terrain-independent).
 - With water costing 1, every 1-wide crossing fits the cap: worst case

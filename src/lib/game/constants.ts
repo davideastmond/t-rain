@@ -78,6 +78,9 @@ export const BOX_BRIDGE_CHANCE = 0.45;
 /** Free movement points the extra-steps outcome grants the collecting piece. */
 export const EXTRA_STEPS_POINTS = 2;
 
+/** Movement points a bridge holder pays to enter a water tile. */
+export const WATER_CROSS_COST = 1;
+
 // --- Terrain generation -----------------------------------------------------
 
 /** Approximate share of tiles generated as forest. The rest (after water) is plains. */
