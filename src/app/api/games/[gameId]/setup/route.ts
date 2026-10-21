@@ -3,8 +3,11 @@
 // Body: { pieces: [{ character, x, y } × 15], traps: [{ x, y } × 10] }.
 // The whole submission is validated by the setup engine (zones, counts,
 // neutral cap, water); invalid submissions are rejected wholesale and the
-// client keeps its draft. One submission per seat. If the setup clock
-// already expired, auto-placement runs first and a late submission loses.
+// client keeps its draft. One submission per seat. Submissions are also
+// accepted during the lobby, before the opponent joins: the setup clock
+// only bounds seats that haven't submitted once it starts. If the setup
+// clock already expired, auto-placement runs first and a late submission
+// loses.
 
 import { CHARACTERS } from "@/lib/game/constants";
 import { applySetup } from "@/lib/game/setup";
@@ -88,7 +91,10 @@ export async function POST(
     }
   }
 
-  if (record.setupEndsAt === null || record.state.phase !== "setup") {
+  // Lobby submissions (setupEndsAt still null) are accepted — the phase is
+  // the real gate. The clock only bounds seats that haven't submitted once
+  // it starts, and maybeAutoPlaceSetup above is a no-op until it does.
+  if (record.state.phase !== "setup") {
     return Response.json({ error: "wrong-phase" }, { status: 403 });
   }
 
