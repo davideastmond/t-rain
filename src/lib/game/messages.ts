@@ -27,6 +27,7 @@ export const SETUP_ERROR_MESSAGES: Record<SetupError, string> = {
   "too-many-neutral-traps": `At most ${MAX_NEUTRAL_TRAPS} traps may go in the neutral row.`,
   "duplicate-position": "That tile is already taken.",
   "on-water": "Nothing can be placed on water.",
+  "on-mystery-box": "A mystery box sits there — it can't share its tile with a trap.",
 };
 
 export const MOVE_ERROR_MESSAGES: Record<MoveError, string> = {

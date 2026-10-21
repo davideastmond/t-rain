@@ -15,6 +15,7 @@
 // validation on a client's submission later.
 
 import { generateBoard, tileIndex } from "./board";
+import { generateMysteryBoxes, mysteryBoxAt } from "./boxes";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -51,7 +52,8 @@ export type SetupError =
   | "trap-outside-zone"
   | "too-many-neutral-traps"
   | "duplicate-position"
-  | "on-water";
+  | "on-water"
+  | "on-mystery-box";
 
 export type Validation = { ok: true } | { ok: false; error: SetupError };
 
@@ -136,6 +138,9 @@ export function canPlaceTrapAt(
   if (!TERRAIN_INFO[tileAt(state, position).terrain].passable) {
     return { ok: false, error: "on-water" };
   }
+  if (mysteryBoxAt(state, position)) {
+    return { ok: false, error: "on-mystery-box" };
+  }
   if (alreadyPlaced.some((p) => samePosition(p, position))) {
     return { ok: false, error: "duplicate-position" };
   }
@@ -174,6 +179,9 @@ export function createGame(seed: number): GameState {
     winner: null,
     nerfTokens: { north: 0, south: 0 },
     nerfTokensPending: { north: 0, south: 0 },
+    mysteryBoxes: generateMysteryBoxes(seed, tiles),
+    bonusPoints: {},
+    boxRolls: 0,
   };
 }
 
@@ -227,6 +235,7 @@ export function applySetup(
     owner: player,
     position,
     status: "active",
+    hasBridge: false,
   }));
   const newTraps: Trap[] = trapPositions.map((position) => ({
     owner: player,
