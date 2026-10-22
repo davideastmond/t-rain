@@ -198,6 +198,12 @@ function GameClient() {
 
   const versionRef = useRef(0);
   const lastEventSeqRef = useRef(0);
+  /**
+   * Tile keys of my own trap-sense reveals as last seen — the baseline
+   * for narrating *new* reveals. Null until the first state arrives, so
+   * joining or reloading mid-game doesn't re-narrate old knowledge.
+   */
+  const revealedSeenRef = useRef<Set<string> | null>(null);
 
   const pushFeed = useCallback((lines: string[]) => {
     if (lines.length === 0) return;
@@ -210,6 +216,33 @@ function GameClient() {
       if (events.length > 0) {
         lastEventSeqRef.current = events[events.length - 1].seq;
         pushFeed(describeEvents(events, state));
+      }
+      // Trap-sense reveals are private knowledge: the server never puts
+      // them in the shared event log (a position there would leak to
+      // the opponent). This client derives its own reveal lines from
+      // its filtered state instead — sanitizeForNetPlayer redacts the
+      // opponent's revealed set to [], so the union of both lists in a
+      // state I receive is exactly what *I* have revealed.
+      const myRevealed = [...state.revealedTraps.north, ...state.revealedTraps.south];
+      const myRevealedKeys = new Set(myRevealed.map(tileKey));
+      if (revealedSeenRef.current === null) {
+        revealedSeenRef.current = myRevealedKeys;
+      } else {
+        const fresh = myRevealed.filter(
+          (position) => !revealedSeenRef.current!.has(tileKey(position)),
+        );
+        if (fresh.length > 0) {
+          revealedSeenRef.current = myRevealedKeys;
+          pushFeed(
+            fresh.length === 1
+              ? [
+                  `🔍 Trap sense revealed a trap at (${fresh[0].x}, ${fresh[0].y}) — it's still live!`,
+                ]
+              : [
+                  `🔍 Trap sense revealed ${fresh.length} traps — they're still live!`,
+                ],
+          );
+        }
       }
     },
     [pushFeed],
@@ -678,6 +711,9 @@ function GameClient() {
         biome={netState.biome}
         pieces={displayPieces}
         traps={displayTraps}
+        revealedTrapKeys={
+          seat ? new Set(netState.revealedTraps[seat].map(tileKey)) : undefined
+        }
         mysteryBoxes={netState.mysteryBoxes}
         highlighted={highlighted}
         dangerHighlighted={dangerHighlighted}
@@ -832,6 +868,7 @@ function GameClient() {
                     {(netState.bonusPoints[selectedPiece.id] ?? 0) > 0 && (
                       <> + {netState.bonusPoints[selectedPiece.id]}🎁 free</>
                     )}
+                    {selectedPiece.hasTrapSense && <> · 🔍 trap sense</>}
                   </>
                 )}
               </p>
