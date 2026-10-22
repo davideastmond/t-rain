@@ -38,14 +38,31 @@ import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./ty
 
 /**
  * The game as `player` is allowed to see it: everything is intact except
- * the opponent's untriggered traps are removed. Triggered traps are
- * public (they're revealed on the board), and your own traps are yours
- * to know. This is the only state the CPU may decide from.
+ * the opponent's untriggered traps are removed — unless trap sense has
+ * revealed one to this player (POWERUPS_SPEC.md §6), in which case it
+ * stays. Triggered traps are public (they're revealed on the board),
+ * and your own traps are yours to know. The opponent's *revealed set*
+ * is also redacted: what the other side has learned is itself private,
+ * so the returned state carries only the viewer's own revealedTraps.
+ * This is the only state the CPU may decide from.
  */
 export function sanitizeForPlayer(state: GameState, player: PlayerId): GameState {
+  const revealed = state.revealedTraps[player];
   return {
     ...state,
-    traps: state.traps.filter((trap) => trap.owner === player || trap.triggered),
+    traps: state.traps.filter(
+      (trap) =>
+        trap.owner === player ||
+        trap.triggered ||
+        revealed.some(
+          (position) =>
+            position.x === trap.position.x && position.y === trap.position.y,
+        ),
+    ),
+    revealedTraps: {
+      north: player === "north" ? revealed : [],
+      south: player === "south" ? revealed : [],
+    },
   };
 }
 
