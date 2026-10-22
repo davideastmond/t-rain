@@ -8,6 +8,10 @@ import Link from "next/link";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
+  BOX_BRIDGE_CHANCE,
+  BOX_EXTRA_STEPS_CHANCE,
+  BOX_TRAP_SENSE_CHANCE,
+  EXTRA_STEPS_POINTS,
   MAX_NEUTRAL_TRAPS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
@@ -124,6 +128,48 @@ export default function RulesPage() {
           even mid-turn, and even on the goal row: the trap resolves before
           scoring.
         </p>
+      </Section>
+
+      <Section title="Mystery boxes">
+        <p>
+          One 🎁 mystery box sits in each half of the board, and only the{" "}
+          <strong className="text-neutral-100">invader</strong> can collect
+          it — step a piece onto the box in enemy territory to roll what&apos;s
+          inside:
+        </p>
+        <ul className="list-disc pl-6">
+          <li>
+            <strong className="text-neutral-100">Extra steps</strong> (
+            {Math.round(BOX_EXTRA_STEPS_CHANCE * 100)}%) — +
+            {EXTRA_STEPS_POINTS} free movement points for that piece, this
+            turn only
+          </li>
+          <li>
+            <strong className="text-neutral-100">Bridge</strong> (
+            {Math.round(BOX_BRIDGE_CHANCE * 100)}%) — the piece can cross
+            one water tile, but it must reach land the same turn or it
+            drowns, and a water tile never scores
+          </li>
+          <li>
+            <strong className="text-neutral-100">Trap sense</strong> (
+            {Math.round(BOX_TRAP_SENSE_CHANCE * 100)}%) — for the rest of
+            the turn, the traps on the tiles next to that piece
+            (up/down/left/right) are revealed to you, on collection and
+            after each of its steps. Revealed traps stay on your board for
+            good — but they stay live, so don&apos;t step on one later
+          </li>
+          <li>
+            <strong className="text-neutral-100">Booby trap</strong> (
+            {Math.round(
+              (1 -
+                BOX_EXTRA_STEPS_CHANCE -
+                BOX_BRIDGE_CHANCE -
+                BOX_TRAP_SENSE_CHANCE) *
+                100,
+            )}
+            %) — the collecting piece is eliminated
+          </li>
+        </ul>
       </Section>
 
       <Section title="Scoring & nerfs">
