@@ -51,6 +51,7 @@ export interface GameStartEvent {
     nerfPoolCost: number;
     boxExtraStepsChance: number;
     boxBridgeChance: number;
+    boxTrapSenseChance: number;
     extraStepsPoints: number;
     waterCrossCost: number;
   };

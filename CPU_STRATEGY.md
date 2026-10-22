@@ -39,6 +39,13 @@ information only.
   from a water tile only land is reachable — the crossing always
   completes instead of stranding the piece mid-river. The CPU never
   *seeks* boxes (v1); it just uses a bridge it happens to hold.
+- **Revealed traps are walls**: an untriggered opponent trap can only
+  appear in the sanitized view if trap sense revealed it to the CPU
+  (POWERUPS_SPEC.md §6) — those tiles are blocked, so routes detour
+  around a known death instead of walking onto it. The knowledge is
+  the player's, not the piece's: every piece routes around every trap
+  the CPU has revealed, not just the scout that sensed it. The CPU's
+  own traps stay walkable (they only harm the opponent).
 
 `chooseCpuStep` routes every active piece, then takes the first step of the
 best route:
@@ -104,9 +111,11 @@ to stop.
 
 ## What it doesn't do
 
-- **Hidden traps are unknowable.** Untriggered opponent traps aren't in the
-  sanitized view, so no route can avoid them — same as a human. Spent
-  (triggered) traps are visible and harmless, so they need no avoiding.
+- **Unrevealed traps are unknowable.** Untriggered opponent traps the CPU
+  hasn't sensed aren't in the sanitized view, so no route can avoid
+  them — same as a human. Spent (triggered) traps are visible and
+  harmless, so they need no avoiding; trap-sense reveals are the one
+  exception, and routes do avoid those (see Pathfinding).
 - **No multi-turn budgeting.** It spends the pool greedily each turn; the
   engine's caps are the only restraint.
 - **No opponent modeling.** It doesn't predict where runners will move;
@@ -115,9 +124,10 @@ to stop.
 ## Tuning knobs
 
 - Tiebreak order in `chooseCpuStep` (cost → steps → random).
-- `findPathToGoal` treats every non-water, unoccupied tile as routable;
-  weighting tiles near known trap deaths would be the honest way to add
-  "trap memory" later.
+- `findPathToGoal` treats every non-water, unoccupied tile as routable,
+  except revealed traps, which are walls; weighting tiles near known
+  trap deaths would be the honest way to add broader "trap memory"
+  later.
 - The nerf heuristic (most-advanced target) lives in `chooseCpuAction`;
   the hunt scope (top-2 targets, top-1 in spoiler mode, this-turn
   feasibility) lives in `chooseNerfHuntStep`.

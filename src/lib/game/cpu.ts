@@ -95,9 +95,12 @@ const posKey = (p: Position): string => `${p.x},${p.y}`;
  * Cheapest route for `pieceId` to any tile satisfying `isGoal`, from the
  * CPU's sanitized view. Dijkstra over the 4-directional grid: each step
  * costs the destination tile's costToEnter (plains 1, forest 2), water is
- * impassable, and tiles occupied by any active piece are walls. Hidden
- * (untriggered) opponent traps can't be routed around — they're not in
- * the view — and spent traps are harmless, so traps play no part.
+ * impassable, and tiles occupied by any active piece are walls. Traps
+ * the viewer *knows* are live are walls too: sanitization removes the
+ * opponent's untriggered traps, so the only ones present in a view are
+ * spent ones (harmless) and any the viewer revealed with trap sense
+ * (POWERUPS_SPEC.md §6) — routes detour around those rather than
+ * walking a piece onto a death it could see coming.
  *
  * Bridge exception: a piece holding a mystery-box bridge may enter one
  * water tile at WATER_CROSS_COST, exactly as the movement engine allows.
@@ -119,6 +122,15 @@ export function findPath(
   for (const p of view.pieces) {
     if (p.status === "active" && p.id !== pieceId) {
       blocked.add(posKey(p.position));
+    }
+  }
+  // Revealed traps are walls (see the header comment): an untriggered
+  // opponent trap can only be in this view because trap sense revealed
+  // it to the viewer. The viewer's own traps stay walkable — they only
+  // ever harm the opponent.
+  for (const trap of view.traps) {
+    if (!trap.triggered && trap.owner !== piece.owner) {
+      blocked.add(posKey(trap.position));
     }
   }
 
