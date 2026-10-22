@@ -84,6 +84,14 @@ export interface Piece {
    * entry, lost when the piece is eliminated.
    */
   hasBridge: boolean;
+  /**
+   * True while the piece holds mystery-box trap sense (POWERUPS_SPEC.md
+   * §6): set on collection, it lasts only the remainder of that turn —
+   * endTurn clears it. While set, the traps on the tiles orthogonally
+   * adjacent to the piece are revealed to its owner (see
+   * GameState.revealedTraps) on collection and after each of its steps.
+   */
+  hasTrapSense: boolean;
 }
 
 /**
@@ -98,7 +106,11 @@ export interface Trap {
 }
 
 /** What a mystery box turned out to contain, rolled at collection time. */
-export type MysteryBoxOutcome = "extra-steps" | "bridge" | "booby-trap";
+export type MysteryBoxOutcome =
+  | "extra-steps"
+  | "bridge"
+  | "trap-sense"
+  | "booby-trap";
 
 /**
  * A mystery box (POWERUPS_SPEC.md): a public raid target generated with
@@ -165,6 +177,16 @@ export interface GameState {
    * stream, so seed + move history reproduces every roll exactly.
    */
   boxRolls: number;
+  /**
+   * Positions of opponent traps revealed to each player by trap sense
+   * (POWERUPS_SPEC.md §6), keyed by the player who knows them. A
+   * revealed trap stays live — stepping onto it still fires it — but it
+   * renders on that player's board for the rest of the game. This is
+   * private knowledge: sanitizeForPlayer redacts it to the viewer's own
+   * list, so a state copy handed to the opponent (or the CPU deciding
+   * for them) never carries what the other side has learned.
+   */
+  revealedTraps: Record<PlayerId, Position[]>;
 }
 
 /**

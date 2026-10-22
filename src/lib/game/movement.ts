@@ -13,7 +13,12 @@
 // is pure: states go in, new states come out, nothing is mutated.
 
 import { tileIndex } from "./board";
-import { boxCollector, mysteryBoxAt, rollMysteryBox } from "./boxes";
+import {
+  boxCollector,
+  mysteryBoxAt,
+  rollMysteryBox,
+  senseAdjacentTraps,
+} from "./boxes";
 import {
   BOARD_HEIGHT,
   BOARD_WIDTH,
@@ -58,6 +63,13 @@ export interface StepOutcome {
   scored: boolean;
   /** The mystery box outcome when this step collected one, else null. */
   box: MysteryBoxOutcome | null;
+  /**
+   * Opponent traps this step revealed to the moving player via trap
+   * sense (POWERUPS_SPEC.md §6) — on the collection step (sensed at the
+   * box tile) and on later steps by the sensing piece. Empty otherwise.
+   * Private to the mover: narrate it only on their own screen.
+   */
+  revealed: Position[];
 }
 
 export type StepResult =
@@ -179,13 +191,19 @@ export function legalStepTargets(state: GameState, pieceId: string): Position[] 
  *    revealed, the piece is eliminated (even on the goal row: a trapped
  *    goal tile does not score).
  * 3. A mystery box on the destination is collected on entry when the
- *    piece belongs to its collector: the roll grants free points or a
- *    bridge, or booby-traps the piece (eliminated, like a trap). A box
- *    tile never holds a trap, so steps 2 and 3 can't coincide.
- * 4. Otherwise, if the destination is the piece's goal row, it scores.
+ *    piece belongs to its collector: the roll grants free points, a
+ *    bridge, or trap sense, or booby-traps the piece (eliminated, like
+ *    a trap). A box tile never holds a trap, so steps 2 and 3 can't
+ *    coincide.
+ * 4. Trap sense resolves after the box: a piece that just rolled it
+ *    senses at the box tile, and a piece already holding it senses at
+ *    its new position after every step — the opponent traps on the
+ *    four orthogonally adjacent tiles are revealed to its owner for
+ *    good (see senseAdjacentTraps). Revealing never disarms.
+ * 5. Otherwise, if the destination is the piece's goal row, it scores.
  *    (A water tile never scores, even on the goal row — the crossing
  *    only counts once the piece reaches land.)
- * 5. Winning and losing are checked immediately: reaching PIECES_TO_WIN
+ * 6. Winning and losing are checked immediately: reaching PIECES_TO_WIN
  *    scored wins; dropping below PIECES_TO_WIN pieces still able to score
  *    (active + already scored) loses on the spot.
  */
@@ -238,6 +256,10 @@ export function movePieceStep(
       // Entering water spends the bridge; collecting one grants it.
       // (The two can't coincide — boxes never sit on water.)
       hasBridge: (p.hasBridge || boxOutcome === "bridge") && !enteredWater,
+      // Collecting trap sense switches the sense on for the rest of the
+      // turn; endTurn switches it off. Nothing else clears it — the
+      // piece keeps sensing after every step it takes this turn.
+      hasTrapSense: p.hasTrapSense || boxOutcome === "trap-sense",
     };
   });
   const traps =
@@ -249,6 +271,25 @@ export function movePieceStep(
   const mysteryBoxes = collects
     ? state.mysteryBoxes.map((b) => (b === box ? { ...b, collected: true } : b))
     : state.mysteryBoxes;
+
+  // Trap sense (POWERUPS_SPEC.md §6): a piece holding it — including one
+  // that rolled it on this very step — senses from its new position.
+  // Sensing runs against the post-step traps, so a trap that fired this
+  // step is already spent and public, never "revealed"; an eliminated
+  // piece senses nothing. The reveals join the owner's permanent set.
+  const movedPiece = pieces.find((p) => p.id === pieceId)!;
+  const revealed =
+    !eliminated && movedPiece.hasTrapSense
+      ? senseAdjacentTraps({ ...state, traps }, movedPiece)
+      : [];
+  const revealedTraps =
+    revealed.length > 0
+      ? {
+          ...state.revealedTraps,
+          [piece.owner]: [...state.revealedTraps[piece.owner], ...revealed],
+        }
+      : state.revealedTraps;
+
   let bonusPoints = state.bonusPoints;
   if (fromBonus > 0 || boxOutcome === "extra-steps") {
     bonusPoints = {
@@ -302,6 +343,7 @@ export function movePieceStep(
       nerfTokensPending,
       mysteryBoxes,
       bonusPoints,
+      revealedTraps,
       boxRolls: state.boxRolls + (collects ? 1 : 0),
       movementPointsLeft: state.movementPointsLeft - fromPool,
       spentThisTurn: {
@@ -309,16 +351,17 @@ export function movePieceStep(
         [pieceId]: (state.spentThisTurn[pieceId] ?? 0) + fromPool,
       },
     },
-    outcome: { cost, eliminated, scored, box: boxOutcome },
+    outcome: { cost, eliminated, scored, box: boxOutcome, revealed },
   };
 }
 
 /**
  * End the current player's turn: the other player takes over with a full
  * pool, and the per-piece tallies reset (unspent points are lost — no
- * banking). Tokens earned this turn flip from pending to usable, and
- * unused mystery-box free points expire. A player may end their turn at
- * any point during play.
+ * banking). Tokens earned this turn flip from pending to usable, unused
+ * mystery-box free points expire, and trap sense switches off (its
+ * reveals, in state.revealedTraps, are permanent). A player may end
+ * their turn at any point during play.
  *
  * Drowning resolves first (POWERUPS_SPEC.md): a piece still standing on
  * a water tile when its owner ends the turn is eliminated — it had to
@@ -333,15 +376,21 @@ export function endTurn(
   if (state.phase !== "playing") return { ok: false, error: "wrong-phase" };
   const player = state.currentPlayer;
 
-  let pieces = state.pieces;
-  const drowned = state.pieces.find(
+  // Trap sense lasts only the collection turn: every flag clears as the
+  // turn ends, whichever way the game leaves this function. (Only the
+  // current player's pieces can hold it — the opponent's was cleared
+  // when their turn ended.)
+  let pieces = state.pieces.map((p) =>
+    p.hasTrapSense ? { ...p, hasTrapSense: false } : p,
+  );
+  const drowned = pieces.find(
     (p) =>
       p.owner === player &&
       p.status === "active" &&
       state.tiles[tileIndex(p.position.x, p.position.y)].terrain === "water",
   );
   if (drowned) {
-    pieces = state.pieces.map((p) =>
+    pieces = pieces.map((p) =>
       p.id === drowned.id ? { ...p, status: "eliminated" as const } : p,
     );
     const stillAbleToScore =

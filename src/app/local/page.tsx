@@ -100,6 +100,8 @@ function boxMessage(who: string, box: MysteryBoxOutcome): string {
       return `🎁 ${who} opened a mystery box: +${EXTRA_STEPS_POINTS} free steps this turn!`;
     case "bridge":
       return `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`;
+    case "trap-sense":
+      return `🎁 ${who} opened a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`;
     case "booby-trap":
       return `🎁 ${who} opened a mystery box — 💥 booby trap!`;
   }
@@ -153,6 +155,7 @@ export default function LocalGamePage() {
       position: draftPieces[character]!,
       status: "active" as const,
       hasBridge: false,
+      hasTrapSense: false,
     }));
   }, [game.pieces, southApplied, draftPieces]);
 

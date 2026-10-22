@@ -1,19 +1,23 @@
-// Mystery boxes (POWERUPS_SPEC.md): generation and the collection roll.
+// Mystery boxes (POWERUPS_SPEC.md): generation, the collection roll,
+// and trap sense.
 //
 // Two boxes per game — one mirrored pair, one in each player's zone —
 // generated with the board from the game seed, on their own RNG stream
 // so they never perturb board generation. A box is public, and only the
 // player whose zone it is *not* in may collect it: stepping onto its
-// tile rolls the contents (extra steps / bridge / booby trap) from a
-// stream seeded by the game seed and the running roll count, so seed +
-// move history reproduces every roll exactly — local, network, and
-// battle replays all agree.
+// tile rolls the contents (extra steps / bridge / trap sense / booby
+// trap) from a stream seeded by the game seed and the running roll
+// count, so seed + move history reproduces every roll exactly — local,
+// network, and battle replays all agree. Trap sense is a pure function
+// of state (trap positions + the sensing piece's path), so replays
+// reproduce every reveal exactly too.
 
 import { mirrorPosition } from "./board";
 import {
   BOARD_HEIGHT,
   BOX_BRIDGE_CHANCE,
   BOX_EXTRA_STEPS_CHANCE,
+  BOX_TRAP_SENSE_CHANCE,
   NEUTRAL_ROW,
   SETUP_ROWS,
 } from "./constants";
@@ -23,6 +27,7 @@ import {
   type GameState,
   type MysteryBox,
   type MysteryBoxOutcome,
+  type Piece,
   type PlayerId,
   type Position,
   type Tile,
@@ -78,5 +83,40 @@ export function rollMysteryBox(state: GameState): MysteryBoxOutcome {
   const roll = createSeededRng(state.seed + 404 + state.boxRolls)();
   if (roll < BOX_EXTRA_STEPS_CHANCE) return "extra-steps";
   if (roll < BOX_EXTRA_STEPS_CHANCE + BOX_BRIDGE_CHANCE) return "bridge";
+  if (
+    roll <
+    BOX_EXTRA_STEPS_CHANCE + BOX_BRIDGE_CHANCE + BOX_TRAP_SENSE_CHANCE
+  ) {
+    return "trap-sense";
+  }
   return "booby-trap";
+}
+
+/**
+ * The opponent traps a sensing piece uncovers right now (POWERUPS_SPEC.md
+ * §6): the untriggered opponent traps on the four tiles orthogonally
+ * adjacent to the piece that its owner has not already revealed. Pure —
+ * the caller unions the result into `state.revealedTraps[piece.owner]`.
+ * Sensing reveals; it never disarms — a revealed trap still fires when
+ * stepped on.
+ */
+export function senseAdjacentTraps(state: GameState, piece: Piece): Position[] {
+  const neighbours: Position[] = [
+    { x: piece.position.x, y: piece.position.y - 1 },
+    { x: piece.position.x, y: piece.position.y + 1 },
+    { x: piece.position.x - 1, y: piece.position.y },
+    { x: piece.position.x + 1, y: piece.position.y },
+  ];
+  return neighbours.filter(
+    (position) =>
+      state.traps.some(
+        (trap) =>
+          !trap.triggered &&
+          trap.owner !== piece.owner &&
+          samePosition(trap.position, position),
+      ) &&
+      !state.revealedTraps[piece.owner].some((revealed) =>
+        samePosition(revealed, position),
+      ),
+  );
 }
