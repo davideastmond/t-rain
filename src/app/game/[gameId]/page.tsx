@@ -129,6 +129,10 @@ function describeEvents(
           lines.push(
             `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`,
           );
+        } else if (event.outcome === "trap-sense") {
+          lines.push(
+            `🎁 ${who} opened a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`,
+          );
         } else {
           lines.push(
             `🎁 ${who} opened a mystery box — 💥 booby trap! It was eliminated!`,
@@ -316,6 +320,7 @@ function GameClient() {
         position: draftPieces[character]!,
         status: "active" as const,
         hasBridge: false,
+        hasTrapSense: false,
       }));
     }
     return netState.pieces;
