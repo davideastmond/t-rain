@@ -3,9 +3,10 @@
 // The colored-squares style lives here: one <div> per tile in a CSS grid,
 // background colour looked up from the biome's palette. Traps are a small
 // 💣 in the corner of the tile. Mystery boxes are a 🎁 on their tile
-// (public — both players see both boxes), and a piece holding a bridge
-// wears a 🌉 badge. There is deliberately no canvas — plain DOM keeps
-// everything styleable and clickable per tile.
+// (public — both players see both boxes), a piece holding a bridge
+// wears a 🌉 badge, and a piece with trap sense wears a 🔍 badge.
+// There is deliberately no canvas — plain DOM keeps everything
+// styleable and clickable per tile.
 //
 // Pieces live on a separate overlay layer above the grid, one absolutely
 // positioned marker per piece, so movement *animates*: each marker is
@@ -50,6 +51,13 @@ interface BoardProps {
   biome: BiomeId;
   pieces?: Piece[];
   traps?: Trap[];
+  /**
+   * Tile keys ("x,y") of traps the viewing player knows about only via
+   * trap sense (POWERUPS_SPEC.md §6) — drawn with a "revealed" title so
+   * the player can tell them from their own traps. The page decides
+   * whose knowledge this is; Board just labels what it is handed.
+   */
+  revealedTrapKeys?: Set<string>;
   /** Mystery boxes to draw (🎁 on uncollected ones). Boxes are public. */
   mysteryBoxes?: MysteryBox[];
   highlighted?: Set<string>;
@@ -67,6 +75,7 @@ export default function Board({
   biome,
   pieces = [],
   traps = [],
+  revealedTrapKeys,
   mysteryBoxes = [],
   highlighted,
   dangerHighlighted,
@@ -134,7 +143,13 @@ export default function Board({
               {trap && (
                 <span
                   className="absolute right-0 bottom-0 text-[16px] leading-none"
-                  title={trap.triggered ? "Triggered trap" : "Trap"}
+                  title={
+                    trap.triggered
+                      ? "Triggered trap"
+                      : revealedTrapKeys?.has(tileKey(trap.position))
+                        ? "Revealed trap — still live!"
+                        : "Trap"
+                  }
                 >
                   {trap.triggered ? "💥" : "💣"}
                 </span>
@@ -188,6 +203,14 @@ export default function Board({
                   title="Holds a bridge — can cross one water tile"
                 >
                   🌉
+                </span>
+              )}
+              {piece.hasTrapSense && (
+                <span
+                  className="absolute -top-1.5 -left-1.5 text-[11px] leading-none"
+                  title="Has trap sense this turn — the traps next to it are revealed to its owner"
+                >
+                  🔍
                 </span>
               )}
             </span>

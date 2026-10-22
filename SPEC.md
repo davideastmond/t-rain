@@ -58,7 +58,7 @@ A 2-player, turn-based race across a randomly generated board. Read the terrain,
 ## Mystery Boxes (see POWERUPS_SPEC.md)
 - **2 per game** — one mirrored pair, one in each player's zone, generated with the board (passable tile, never in the back 3 rows, the neutral row, or a goal row). Public: both players see both boxes. No trap may be placed on a box tile.
 - A box can only be collected by the player whose zone it is **not** in, by stepping onto its tile. For the home player it is inert. Each player can collect at most one box per game.
-- Collection rolls the contents: **45% extra steps** (+2 free points for the collecting piece, this turn only, spent before pool points and exempt from the per-piece cap), **45% bridge** (the piece may cross one water tile at cost 1; it must reach land the same turn or it drowns, and a water tile never scores, even on the goal row), **10% booby trap** (the collecting piece is eliminated). The box is consumed on any outcome.
+- Collection rolls the contents: **40% extra steps** (+2 free points for the collecting piece, this turn only, spent before pool points and exempt from the per-piece cap), **25% bridge** (the piece may cross one water tile at cost 1; it must reach land the same turn or it drowns, and a water tile never scores, even on the goal row), **25% trap sense** (the collecting piece senses the traps on the tiles N/S/E/W of it for the rest of the turn — on collection and after each of its steps; sensed traps are revealed to that player only, permanently, but stay live), **10% booby trap** (the collecting piece is eliminated). The box is consumed on any outcome.
 
 ## Winning and Losing
 - **First player to get 5 pieces across (onto the opponent's back row) wins.**

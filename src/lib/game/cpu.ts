@@ -38,14 +38,31 @@ import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./ty
 
 /**
  * The game as `player` is allowed to see it: everything is intact except
- * the opponent's untriggered traps are removed. Triggered traps are
- * public (they're revealed on the board), and your own traps are yours
- * to know. This is the only state the CPU may decide from.
+ * the opponent's untriggered traps are removed — unless trap sense has
+ * revealed one to this player (POWERUPS_SPEC.md §6), in which case it
+ * stays. Triggered traps are public (they're revealed on the board),
+ * and your own traps are yours to know. The opponent's *revealed set*
+ * is also redacted: what the other side has learned is itself private,
+ * so the returned state carries only the viewer's own revealedTraps.
+ * This is the only state the CPU may decide from.
  */
 export function sanitizeForPlayer(state: GameState, player: PlayerId): GameState {
+  const revealed = state.revealedTraps[player];
   return {
     ...state,
-    traps: state.traps.filter((trap) => trap.owner === player || trap.triggered),
+    traps: state.traps.filter(
+      (trap) =>
+        trap.owner === player ||
+        trap.triggered ||
+        revealed.some(
+          (position) =>
+            position.x === trap.position.x && position.y === trap.position.y,
+        ),
+    ),
+    revealedTraps: {
+      north: player === "north" ? revealed : [],
+      south: player === "south" ? revealed : [],
+    },
   };
 }
 
@@ -78,9 +95,12 @@ const posKey = (p: Position): string => `${p.x},${p.y}`;
  * Cheapest route for `pieceId` to any tile satisfying `isGoal`, from the
  * CPU's sanitized view. Dijkstra over the 4-directional grid: each step
  * costs the destination tile's costToEnter (plains 1, forest 2), water is
- * impassable, and tiles occupied by any active piece are walls. Hidden
- * (untriggered) opponent traps can't be routed around — they're not in
- * the view — and spent traps are harmless, so traps play no part.
+ * impassable, and tiles occupied by any active piece are walls. Traps
+ * the viewer *knows* are live are walls too: sanitization removes the
+ * opponent's untriggered traps, so the only ones present in a view are
+ * spent ones (harmless) and any the viewer revealed with trap sense
+ * (POWERUPS_SPEC.md §6) — routes detour around those rather than
+ * walking a piece onto a death it could see coming.
  *
  * Bridge exception: a piece holding a mystery-box bridge may enter one
  * water tile at WATER_CROSS_COST, exactly as the movement engine allows.
@@ -102,6 +122,15 @@ export function findPath(
   for (const p of view.pieces) {
     if (p.status === "active" && p.id !== pieceId) {
       blocked.add(posKey(p.position));
+    }
+  }
+  // Revealed traps are walls (see the header comment): an untriggered
+  // opponent trap can only be in this view because trap sense revealed
+  // it to the viewer. The viewer's own traps stay walkable — they only
+  // ever harm the opponent.
+  for (const trap of view.traps) {
+    if (!trap.triggered && trap.owner !== piece.owner) {
+      blocked.add(posKey(trap.position));
     }
   }
 

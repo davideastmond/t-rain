@@ -125,6 +125,14 @@ POSTs can never silently clobber each other.
   built for the CPU opponent. A client **never** receives the
   opponent's untriggered trap locations. Triggered traps are public
   and included.
+- **Trap sense (POWERUPS_SPEC v2 §6)** is the one exception, and it is
+  per-viewer: traps a player has revealed with trap sense are included
+  in *that player's* filtered state (they sit in the traps list like
+  their own), and the state's `revealedTraps` is redacted to the
+  viewer's own list. The opponent's copy contains neither the revealed
+  positions nor any trace of what has been learned. The step response
+  to the mover carries their own step `outcome` (including its
+  `revealed` positions) — that response only ever goes to the mover.
 - The **event log** is the client's narration/animation feed:
   `step { pieceId, from, to, cost }`, `trap-triggered { at,
   victimPieceId }`, `scored { pieceId, player, scores }`,
@@ -135,7 +143,11 @@ POSTs can never silently clobber each other.
   Entries are appended server-side on every mutation, each with a
   `seq`. Clients send `lastEventSeq` and receive only newer entries.
   Trap events reference only *triggered* traps, so the log leaks
-  nothing either.
+  nothing either. `box-collected`'s outcome includes `trap-sense`
+  (v2) — the roll itself is public — but there is deliberately **no
+  trap-revealed event**: a revealed position in the shared log would
+  leak it to the opponent. The collecting client derives its own
+  reveal narration from the growth of its filtered `revealedTraps`.
 
 ## 8. Setup protocol (detail)
 

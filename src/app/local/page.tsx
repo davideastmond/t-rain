@@ -100,9 +100,26 @@ function boxMessage(who: string, box: MysteryBoxOutcome): string {
       return `🎁 ${who} opened a mystery box: +${EXTRA_STEPS_POINTS} free steps this turn!`;
     case "bridge":
       return `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`;
+    case "trap-sense":
+      return `🎁 ${who} opened a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`;
     case "booby-trap":
       return `🎁 ${who} opened a mystery box — 💥 booby trap!`;
   }
+}
+
+/**
+ * The trap-sense addendum to a step's message: what the step just
+ * revealed to the moving player (POWERUPS_SPEC.md §6). Only ever used
+ * for the human player's own steps — the CPU's reveals are its private
+ * knowledge and are never narrated on this screen.
+ */
+function revealNote(revealed: Position[]): string {
+  if (revealed.length === 0) return "";
+  if (revealed.length === 1) {
+    const p = revealed[0];
+    return ` 🔍 Trap sense revealed a trap at (${p.x}, ${p.y}) — it's still live!`;
+  }
+  return ` 🔍 Trap sense revealed ${revealed.length} traps — they're still live!`;
 }
 
 export default function LocalGamePage() {
@@ -153,8 +170,17 @@ export default function LocalGamePage() {
       position: draftPieces[character]!,
       status: "active" as const,
       hasBridge: false,
+      hasTrapSense: false,
     }));
   }, [game.pieces, southApplied, draftPieces]);
+
+  // Whose eyes the board is drawn through. While waiting to start, you
+  // (South) review your own setup. During hotseat play, visibility
+  // follows the turn: the player to move sees their own hidden
+  // information. Against the CPU, visibility is pinned to you — North's
+  // secrets stay hidden all game.
+  const visibleOwner: PlayerId =
+    cpuMode || inSetup ? LOCAL_PLAYER : game.currentPlayer;
 
   const displayTraps: Trap[] = useMemo(() => {
     if (!southApplied) {
@@ -164,15 +190,26 @@ export default function LocalGamePage() {
         triggered: false,
       }));
     }
-    // While waiting to start, you (South) review your own traps. During
-    // hotseat play, visibility follows the turn: the player to move sees
-    // their own untriggered traps, and everyone sees triggered ones
-    // (they're public once they've fired). Against the CPU, visibility is
-    // pinned to you — North's untriggered traps stay hidden all game.
-    const visibleOwner =
-      cpuMode || inSetup ? LOCAL_PLAYER : game.currentPlayer;
-    return game.traps.filter((t) => t.owner === visibleOwner || t.triggered);
-  }, [game.traps, game.currentPlayer, cpuMode, inSetup, southApplied, draftTraps]);
+    // The viewer's own untriggered traps, every triggered trap (public
+    // once fired), plus the opponent traps trap sense has revealed to
+    // the viewer (POWERUPS_SPEC.md §6) — revealed ones stay visible for
+    // the rest of the game, but only ever through the viewer's eyes:
+    // in CPU mode the CPU's own reveals never leak into your board.
+    const revealedKeys = new Set(game.revealedTraps[visibleOwner].map(tileKey));
+    return game.traps.filter(
+      (t) =>
+        t.owner === visibleOwner ||
+        t.triggered ||
+        revealedKeys.has(tileKey(t.position)),
+    );
+  }, [game.traps, game.revealedTraps, visibleOwner, southApplied, draftTraps]);
+
+  // Which of the drawn traps are there *because* trap sense revealed
+  // them to the viewer — Board labels those "Revealed trap".
+  const displayRevealedTrapKeys = useMemo(
+    () => new Set(game.revealedTraps[visibleOwner].map(tileKey)),
+    [game.revealedTraps, visibleOwner],
+  );
 
   // Tiles the current mode may legally use light up. Computed by asking
   // the engine about every candidate tile — no placement rule is repeated
@@ -445,12 +482,15 @@ export default function LocalGamePage() {
         result.state.nerfTokensPending[selectedPiece.owner] >
         game.nerfTokensPending[selectedPiece.owner];
       setMessage(
-        result.state.phase === "finished"
+        (result.state.phase === "finished"
           ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}!`
-          : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.${earnedToken ? " +1 ⚡ nerf token (usable next turn)." : ""}`,
+          : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.${earnedToken ? " +1 ⚡ nerf token (usable next turn)." : ""}`) +
+          revealNote(result.outcome.revealed),
       );
     } else if (result.outcome.box) {
-      setMessage(boxMessage(who, result.outcome.box));
+      setMessage(boxMessage(who, result.outcome.box) + revealNote(result.outcome.revealed));
+    } else if (result.outcome.revealed.length > 0) {
+      setMessage(revealNote(result.outcome.revealed).trim());
     } else {
       setMessage(null);
     }
@@ -684,6 +724,7 @@ export default function LocalGamePage() {
         biome={game.biome}
         pieces={displayPieces}
         traps={displayTraps}
+        revealedTrapKeys={displayRevealedTrapKeys}
         mysteryBoxes={game.mysteryBoxes}
         highlighted={highlighted}
         dangerHighlighted={dangerHighlighted}
@@ -865,6 +906,7 @@ export default function LocalGamePage() {
                     {(game.bonusPoints[selectedPiece.id] ?? 0) > 0 && (
                       <> + {game.bonusPoints[selectedPiece.id]}🎁 free</>
                     )}
+                    {selectedPiece.hasTrapSense && <> · 🔍 trap sense</>}
                   </>
                 )}
                 {nerfArmed && (
