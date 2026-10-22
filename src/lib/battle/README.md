@@ -7,7 +7,7 @@ of vibes.
 
 - `strategies.ts` — the registry. Every CPU the lab can field, each with a
   stable `id` and a `version` that moves when its behavior changes
-  (`greedy@v1`, `pathfinder@v2`, `full@v3`). The version is what logs
+  (`greedy@v1`, `pathfinder@v3`, `full@v4`). The version is what logs
   record, so tournaments stay comparable across algo tweaks.
 - `log.ts` — the JSONL event schema (v1) and the `BattleLog` collector.
 - `runner.ts` — `runBattleGame(seed, southId, northId, opts)`: the real
@@ -44,7 +44,7 @@ rates, nerf conversion) from the raw stream.
 
 ## Tuning workflow
 
-1. Run a tournament: e.g. 100 games of `full@v3` vs `pathfinder@v2`.
+1. Run a tournament: e.g. 100 games of `full@v4` vs `pathfinder@v3`.
 2. Download the `.jsonl`, hand it to Baloo (or a script).
 3. Compare: win rate, average game length, eliminations per game, trap
    hit rate, nerf conversion rate, scores-over-time from `turn_end`.

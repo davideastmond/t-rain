@@ -20,6 +20,7 @@ import { tileIndex } from "../game/board";
 import {
   BOX_BRIDGE_CHANCE,
   BOX_EXTRA_STEPS_CHANCE,
+  BOX_TRAP_SENSE_CHANCE,
   EXTRA_STEPS_POINTS,
   MAX_POINTS_PER_PIECE_PER_TURN,
   MOVEMENT_POINTS_PER_TURN,
@@ -124,6 +125,7 @@ export function createBattle(
       nerfPoolCost: NERF_POOL_COST,
       boxExtraStepsChance: BOX_EXTRA_STEPS_CHANCE,
       boxBridgeChance: BOX_BRIDGE_CHANCE,
+      boxTrapSenseChance: BOX_TRAP_SENSE_CHANCE,
       extraStepsPoints: EXTRA_STEPS_POINTS,
       waterCrossCost: WATER_CROSS_COST,
     },
