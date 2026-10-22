@@ -182,6 +182,7 @@ export function createGame(seed: number): GameState {
     mysteryBoxes: generateMysteryBoxes(seed, tiles),
     bonusPoints: {},
     boxRolls: 0,
+    revealedTraps: { north: [], south: [] },
   };
 }
 
@@ -236,6 +237,7 @@ export function applySetup(
     position,
     status: "active",
     hasBridge: false,
+    hasTrapSense: false,
   }));
   const newTraps: Trap[] = trapPositions.map((position) => ({
     owner: player,
