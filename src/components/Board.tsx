@@ -101,7 +101,12 @@ export default function Board({
   const activePieces = pieces.filter((piece) => piece.status === "active");
 
   return (
-    <div className="relative w-full">
+    // The board keeps a minimum tile size (~24px) instead of shrinking
+    // to fit narrow screens: below that width the wrapper scrolls
+    // sideways. On desktop the page column (~1024px) is wider than the
+    // minimum, so nothing changes there — the board still fills it.
+    <div className="w-full overflow-x-auto">
+      <div className="relative min-w-[760px]">
       <div
         className="grid w-full gap-px rounded-lg bg-black/50 p-1"
         style={{
@@ -216,6 +221,7 @@ export default function Board({
             </span>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );
