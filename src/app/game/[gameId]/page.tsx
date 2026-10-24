@@ -226,6 +226,9 @@ function GameClient() {
    * play.
    */
   const soundsArmedRef = useRef(false);
+  /** Previous phase, for the setup → playing "go" sound. Null until
+      the first state arrives, so joining mid-game never plays it. */
+  const prevPhaseRef = useRef<GameState["phase"] | null>(null);
 
   // Sound on by default; the persisted preference takes over after
   // hydration (the server snapshot is always "on", so no mismatch).
@@ -242,6 +245,11 @@ function GameClient() {
   const applyServerState = useCallback(
     (state: GameState, events: NetEvent[], seat: PlayerId | null) => {
       setNetState(state);
+      const prevPhase = prevPhaseRef.current;
+      prevPhaseRef.current = state.phase;
+      if (prevPhase === "setup" && state.phase === "playing") {
+        playSound("start");
+      }
       if (events.length > 0) {
         lastEventSeqRef.current = events[events.length - 1].seq;
         pushFeed(describeEvents(events, state));
@@ -494,6 +502,7 @@ function GameClient() {
           return next;
         });
         setSelectedCharacter(placed);
+        playSound("place");
         return;
       }
       const others = ALL_CHARACTERS.filter(
@@ -502,9 +511,11 @@ function GameClient() {
       const check = canPlacePieceAt(netState, seat, position, others);
       if (!check.ok) {
         pushFeed([SETUP_ERROR_MESSAGES[check.error]]);
+        playSound("invalid");
         return;
       }
       const nextDraft = { ...draftPieces, [selectedCharacter]: position };
+      playSound("place");
       setDraftPieces(nextDraft);
       const nextUnplaced = ALL_CHARACTERS.find((c) => !nextDraft[c]);
       if (nextUnplaced) setSelectedCharacter(nextUnplaced);
@@ -517,13 +528,16 @@ function GameClient() {
       setDraftTraps((prev) =>
         prev.filter((p) => !(p.x === position.x && p.y === position.y)),
       );
+      playSound("place");
       return;
     }
     const check = canPlaceTrapAt(netState, seat, position, draftTraps);
     if (!check.ok) {
       pushFeed([SETUP_ERROR_MESSAGES[check.error]]);
+      playSound("invalid");
       return;
     }
+    playSound("place");
     setDraftTraps((prev) => [...prev, position]);
   }
 

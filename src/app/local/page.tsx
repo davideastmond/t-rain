@@ -342,6 +342,7 @@ export default function LocalGamePage() {
           return next;
         });
         setSelectedCharacter(placed);
+        playSound("place");
         return;
       }
       const others = ALL_CHARACTERS.filter(
@@ -350,9 +351,11 @@ export default function LocalGamePage() {
       const check = canPlacePieceAt(game, LOCAL_PLAYER, position, others);
       if (!check.ok) {
         setMessage(SETUP_ERROR_MESSAGES[check.error]);
+        playSound("invalid");
         return;
       }
       const nextDraft = { ...draftPieces, [selectedCharacter]: position };
+      playSound("place");
       setDraftPieces(nextDraft);
       // Advance to the next unplaced character so placing all 15 is
       // click-click-click without touching the tray.
@@ -369,13 +372,16 @@ export default function LocalGamePage() {
       setDraftTraps((prev) =>
         prev.filter((p) => !(p.x === position.x && p.y === position.y)),
       );
+      playSound("place");
       return;
     }
     const check = canPlaceTrapAt(game, LOCAL_PLAYER, position, draftTraps);
     if (!check.ok) {
       setMessage(SETUP_ERROR_MESSAGES[check.error]);
+      playSound("invalid");
       return;
     }
+    playSound("place");
     setDraftTraps((prev) => [...prev, position]);
   }
 
@@ -414,6 +420,7 @@ export default function LocalGamePage() {
       return;
     }
     setGame(result.state);
+    playSound("start");
     setMessage(
       `${playerLabel(result.state.currentPlayer)} moves first — click one of their pieces, then a glowing tile to step.`,
     );
