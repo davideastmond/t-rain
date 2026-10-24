@@ -22,7 +22,13 @@
 // per-player view — North's untriggered traps stay hidden from you, and the
 // CPU can't see yours.
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import Link from "next/link";
 
 import Board, { tileKey } from "@/components/Board";
@@ -58,6 +64,14 @@ import {
 } from "@/lib/game/movement";
 import { applyNerf, nerfTargets } from "@/lib/game/nerf";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
+import {
+  isMuted,
+  playSound,
+  playStepSounds,
+  setMuted,
+  soundForStepOutcome,
+  subscribeMuted,
+} from "@/lib/sound";
 import {
   ALL_CHARACTERS,
   applySetup,
@@ -141,6 +155,25 @@ export default function LocalGamePage() {
   // from the previous game's positions.
   const [gameId, setGameId] = useState(0);
   const [cpuMode, setCpuMode] = useState(true);
+  // Sound on by default; the persisted preference takes over after
+  // hydration (the server snapshot is always "on", so no mismatch).
+  const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
+  function toggleMute() {
+    setMuted(!muted);
+  }
+  /** Win/lose stinger for a finished game, delayed so it lands after
+      the step's own sound. In CPU mode the human is South; in hotseat
+      both sides are human, so any win celebrates. */
+  const playGameEndSound = useCallback(
+    (state: GameState) => {
+      if (state.phase !== "finished" || !state.winner) return;
+      const winner = state.winner;
+      window.setTimeout(() => {
+        playSound(!cpuMode || winner === LOCAL_PLAYER ? "win" : "lose");
+      }, 300);
+    },
+    [cpuMode],
+  );
 
   const palette = BIOME_PALETTES[game.biome];
   const southApplied = game.pieces.some((p) => p.owner === LOCAL_PLAYER);
@@ -425,6 +458,8 @@ export default function LocalGamePage() {
         return;
       }
       setGame(result.state);
+      playSound("nerf");
+      playGameEndSound(result.state);
       setNerfArmed(false);
       setSelectedPieceId(null);
       const victim = getPiece(game, result.outcome.eliminatedPieceId)!;
@@ -456,9 +491,12 @@ export default function LocalGamePage() {
     const result = movePieceStep(game, selectedPieceId, position);
     if (!result.ok) {
       setMessage(MOVE_ERROR_MESSAGES[result.error]);
+      playSound("invalid");
       return;
     }
     setGame(result.state);
+    playStepSounds(result.outcome);
+    playGameEndSound(result.state);
 
     const who = `${CHARACTERS[selectedPiece.character].emoji} ${playerLabel(selectedPiece.owner)} ${CHARACTERS[selectedPiece.character].label}`;
     if (result.outcome.eliminated) {
@@ -504,6 +542,8 @@ export default function LocalGamePage() {
     setNerfArmed(false);
     setTurnCount((count) => count + 1);
     const drowned = findDrownedPiece(game, result.state);
+    if (drowned) playSound("drown");
+    playGameEndSound(result.state);
     if (drowned) {
       const who = `${CHARACTERS[drowned.character].emoji} ${playerLabel(drowned.owner)} ${CHARACTERS[drowned.character].label}`;
       setMessage(
@@ -545,6 +585,8 @@ export default function LocalGamePage() {
           setGame(done.state);
           setTurnCount((count) => count + 1);
           const drowned = findDrownedPiece(game, done.state);
+          if (drowned) playSound("drown");
+          playGameEndSound(done.state);
           if (drowned) {
             const who = `${CHARACTERS[drowned.character].emoji} North ${CHARACTERS[drowned.character].label}`;
             setMessage(
@@ -569,6 +611,8 @@ export default function LocalGamePage() {
           return;
         }
         setGame(result.state);
+        playSound("nerf");
+        playGameEndSound(result.state);
         setSelectedPieceId(null);
         const victim = getPiece(game, action.targetPieceId)!;
         const who = `${CHARACTERS[victim.character].emoji} ${CHARACTERS[victim.character].label}`;
@@ -589,6 +633,10 @@ export default function LocalGamePage() {
         return;
       }
       setGame(result.state);
+      // Base sound only: the CPU's trap-sense reveals are private to
+      // it, so the shimmer must never play for its steps.
+      playSound(soundForStepOutcome(result.outcome));
+      playGameEndSound(result.state);
       setSelectedPieceId(null);
 
       const piece = getPiece(game, action.pieceId)!;
@@ -620,7 +668,7 @@ export default function LocalGamePage() {
       }
     }, CPU_STEP_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [game, cpuMode, playing, cpuTurn]);
+  }, [game, cpuMode, playing, cpuTurn, playGameEndSound]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
@@ -670,6 +718,15 @@ export default function LocalGamePage() {
             Go to seed
           </button>
         </form>
+        <button
+          type="button"
+          onClick={toggleMute}
+          aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+          title={muted ? "Sounds muted" : "Sounds on"}
+          className="rounded-full bg-neutral-800 px-3 py-1.5 text-sm font-medium transition hover:bg-neutral-700"
+        >
+          {muted ? "🔇 Muted" : "🔊 Sound"}
+        </button>
         {!playing && !finished && (
           <label className="flex cursor-pointer items-center gap-2 rounded-full bg-neutral-800 px-3 py-1.5 text-sm select-none">
             <input
