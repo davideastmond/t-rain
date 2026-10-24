@@ -10,7 +10,15 @@
 // the per-seat filtered view, so the opponent's untriggered traps (and,
 // during setup, their pieces) never reach this client.
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 import Board, { tileKey } from "@/components/Board";
@@ -39,6 +47,13 @@ import type { MoveError } from "@/lib/game/movement";
 import { nerfTargets } from "@/lib/game/nerf";
 import type { NerfError } from "@/lib/game/nerf";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
+import {
+  isMuted,
+  playNetEventSounds,
+  playSound,
+  setMuted,
+  subscribeMuted,
+} from "@/lib/sound";
 import {
   ALL_CHARACTERS,
   canPlacePieceAt,
@@ -204,6 +219,20 @@ function GameClient() {
    * joining or reloading mid-game doesn't re-narrate old knowledge.
    */
   const revealedSeenRef = useRef<Set<string> | null>(null);
+  /**
+   * Same baseline idea for sounds: the first state arrival carries the
+   * whole event history (lastEventSeq starts at 0), which must stay
+   * silent. Only events arriving after that are live, so only they
+   * play.
+   */
+  const soundsArmedRef = useRef(false);
+
+  // Sound on by default; the persisted preference takes over after
+  // hydration (the server snapshot is always "on", so no mismatch).
+  const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
+  function toggleMute() {
+    setMuted(!muted);
+  }
 
   const pushFeed = useCallback((lines: string[]) => {
     if (lines.length === 0) return;
@@ -211,11 +240,16 @@ function GameClient() {
   }, []);
 
   const applyServerState = useCallback(
-    (state: GameState, events: NetEvent[]) => {
+    (state: GameState, events: NetEvent[], seat: PlayerId | null) => {
       setNetState(state);
       if (events.length > 0) {
         lastEventSeqRef.current = events[events.length - 1].seq;
         pushFeed(describeEvents(events, state));
+        const armed = soundsArmedRef.current;
+        soundsArmedRef.current = true;
+        if (armed) playNetEventSounds(events, state, seat);
+      } else {
+        soundsArmedRef.current = true;
       }
       // Trap-sense reveals are private knowledge: the server never puts
       // them in the shared event log (a position there would leak to
@@ -233,6 +267,9 @@ function GameClient() {
         );
         if (fresh.length > 0) {
           revealedSeenRef.current = myRevealedKeys;
+          // Viewer-scoped by construction: redaction empties the
+          // opponent's list, so only my own reveals shimmer.
+          playSound("trapSense");
           pushFeed(
             fresh.length === 1
               ? [
@@ -276,7 +313,7 @@ function GameClient() {
     setOpponentSeenAgoSec(body.opponentSeenAgoSec);
     if (body.changed) {
       setSetupEndsAt(body.setupEndsAt ?? null);
-      applyServerState(body.state, body.events ?? []);
+      applyServerState(body.state, body.events ?? [], body.seat);
     }
   }, [gameId, token, applyServerState]);
 
@@ -319,7 +356,11 @@ function GameClient() {
         return null;
       }
       versionRef.current = data.version as number;
-      applyServerState(data.state as GameState, (data.events as NetEvent[]) ?? []);
+      applyServerState(
+        data.state as GameState,
+        (data.events as NetEvent[]) ?? [],
+        seat,
+      );
       return data;
     } catch {
       pushFeed(["Couldn't reach the server — retrying…"]);
@@ -630,6 +671,15 @@ function GameClient() {
             </span>
           )}
         </p>
+        <button
+          type="button"
+          onClick={toggleMute}
+          aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+          title={muted ? "Sounds muted" : "Sounds on"}
+          className="mt-2 rounded-full bg-neutral-800 px-3 py-1.5 text-sm font-medium transition hover:bg-neutral-700"
+        >
+          {muted ? "🔇 Muted" : "🔊 Sound"}
+        </button>
       </header>
 
       {inLobby && (

@@ -14,6 +14,8 @@
 // information — every one duplicates something already shown visually.
 
 import type { StepOutcome } from "./game/movement";
+import type { GameState, PlayerId } from "./game/types";
+import type { NetEvent } from "./net/store";
 
 export type SoundName =
   | "move"
@@ -25,7 +27,8 @@ export type SoundName =
   | "win"
   | "lose"
   | "drown"
-  | "invalid";
+  | "invalid"
+  | "turn";
 
 const MUTE_KEY = "train-muted";
 
@@ -37,6 +40,119 @@ export function soundForStepOutcome(outcome: StepOutcome): SoundName {
   if (outcome.box) return "box";
   if (outcome.scored) return "score";
   return "move";
+}
+
+export interface QueuedSound {
+  name: SoundName;
+  /** Opponent-side events play quieter, so an online game sounds alive
+      without doubling your own actions. */
+  soft: boolean;
+  delayMs: number;
+}
+
+/**
+ * Map a batch of new net events to the sounds they should play, in
+ * seq order. The rule for volume: an event sounds full when it
+ * concerns your own pieces, soft when it concerns the opponent's.
+ *
+ * A step covered by a terminal event in the same batch (trap, score,
+ * or box) plays no move sound — the terminal sound covers it, the
+ * same one-sound-per-step rule as local play. Boxes are never on the
+ * goal row, so a step can't both collect and score. The trap-sense
+ * shimmer is NOT here: reveals are derived client-side from the
+ * viewer's own redacted state (see the net page), never from events.
+ * `game-created`, `player-joined`, `setup-submitted`, and `forfeited`
+ * are silent — a forfeit is covered by the game-finished stinger that
+ * follows it.
+ */
+export function netEventSounds(
+  events: NetEvent[],
+  state: GameState,
+  seat: PlayerId | null,
+): QueuedSound[] {
+  if (seat === null) return [];
+  const terminalPieces = new Set<string>();
+  for (const event of events) {
+    if (event.type === "trap-triggered") {
+      terminalPieces.add(event.victimPieceId);
+    } else if (event.type === "scored" || event.type === "box-collected") {
+      terminalPieces.add(event.pieceId);
+    }
+  }
+  const ownerOf = (pieceId: string): PlayerId | null =>
+    state.pieces.find((p) => p.id === pieceId)?.owner ?? null;
+  const out: QueuedSound[] = [];
+  for (const event of events) {
+    switch (event.type) {
+      case "step":
+        if (!terminalPieces.has(event.pieceId)) {
+          out.push({
+            name: "move",
+            soft: ownerOf(event.pieceId) !== seat,
+            delayMs: 0,
+          });
+        }
+        break;
+      case "trap-triggered":
+        out.push({
+          name: "trap",
+          soft: ownerOf(event.victimPieceId) !== seat,
+          delayMs: 0,
+        });
+        break;
+      case "scored":
+        out.push({ name: "score", soft: event.player !== seat, delayMs: 0 });
+        break;
+      case "nerfed":
+        out.push({
+          name: "nerf",
+          soft: ownerOf(event.targetPieceId) !== seat,
+          delayMs: 0,
+        });
+        break;
+      case "box-collected":
+        out.push({
+          name: event.outcome === "booby-trap" ? "trap" : "box",
+          soft: event.player !== seat,
+          delayMs: 0,
+        });
+        break;
+      case "piece-drowned":
+        out.push({ name: "drown", soft: event.player !== seat, delayMs: 0 });
+        break;
+      case "turn-ended":
+        // The opponent ended their turn: yours just started.
+        if (event.player !== seat) {
+          out.push({ name: "turn", soft: false, delayMs: 0 });
+        }
+        break;
+      case "game-finished":
+        out.push({
+          name: event.winner === seat ? "win" : "lose",
+          soft: false,
+          delayMs: 300,
+        });
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
+}
+
+export function playNetEventSounds(
+  events: NetEvent[],
+  state: GameState,
+  seat: PlayerId | null,
+): void {
+  for (const sound of netEventSounds(events, state, seat)) {
+    if (sound.delayMs > 0) {
+      const { name, soft } = sound;
+      globalThis.setTimeout(() => playSound(name, soft), sound.delayMs);
+    } else {
+      playSound(sound.name, sound.soft);
+    }
+  }
 }
 
 /** Base sound for a step, plus the trap-sense shimmer whenever the step
@@ -113,6 +229,8 @@ interface ToneOptions {
   dur: number;
   vol: number;
   detunePct?: number;
+  /** Volume multiplier (0.6 for soft/opponent-side sounds). */
+  scale?: number;
 }
 
 function tone(ac: AudioContext, opts: ToneOptions): void {
@@ -128,14 +246,20 @@ function tone(ac: AudioContext, opts: ToneOptions): void {
     Math.max(1, opts.to * detune),
     t0 + opts.dur,
   );
-  gain.gain.setValueAtTime(opts.vol, t0);
+  gain.gain.setValueAtTime(opts.vol * (opts.scale ?? 1), t0);
   gain.gain.exponentialRampToValueAtTime(0.001, t0 + opts.dur);
   osc.connect(gain).connect(ac.destination);
   osc.start(t0);
   osc.stop(t0 + opts.dur + 0.02);
 }
 
-function noise(ac: AudioContext, dur: number, vol: number, cutoff: number): void {
+function noise(
+  ac: AudioContext,
+  dur: number,
+  vol: number,
+  cutoff: number,
+  scale = 1,
+): void {
   const length = Math.max(1, Math.floor(ac.sampleRate * dur));
   const buffer = ac.createBuffer(1, length, ac.sampleRate);
   const data = buffer.getChannelData(0);
@@ -153,7 +277,7 @@ function noise(ac: AudioContext, dur: number, vol: number, cutoff: number): void
     ac.currentTime + dur,
   );
   const gain = ac.createGain();
-  gain.gain.setValueAtTime(vol, ac.currentTime);
+  gain.gain.setValueAtTime(vol * scale, ac.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
   src.connect(filter).connect(gain).connect(ac.destination);
   src.start();
@@ -165,14 +289,16 @@ function note(
   at: number,
   dur: number,
   vol: number,
+  scale = 1,
 ): void {
-  tone(ac, { type: "sine", from: freq, to: freq, at, dur, vol });
+  tone(ac, { type: "sine", from: freq, to: freq, at, dur, vol, scale });
 }
 
-export function playSound(name: SoundName): void {
+export function playSound(name: SoundName, soft = false): void {
   if (isMuted()) return;
   const ac = getContext();
   if (!ac) return;
+  const scale = soft ? 0.6 : 1;
   try {
     switch (name) {
       case "move":
@@ -185,43 +311,77 @@ export function playSound(name: SoundName): void {
           dur: 0.08,
           vol: 0.12,
           detunePct: 0.1,
+          scale,
         });
         break;
       case "trap":
-        noise(ac, 0.2, 0.25, 1200);
-        tone(ac, { type: "square", from: 220, to: 60, dur: 0.2, vol: 0.18 });
+        noise(ac, 0.2, 0.25, 1200, scale);
+        tone(ac, {
+          type: "square",
+          from: 220,
+          to: 60,
+          dur: 0.2,
+          vol: 0.18,
+          scale,
+        });
         break;
       case "nerf":
-        tone(ac, { type: "sawtooth", from: 900, to: 150, dur: 0.15, vol: 0.2 });
+        tone(ac, {
+          type: "sawtooth",
+          from: 900,
+          to: 150,
+          dur: 0.15,
+          vol: 0.2,
+          scale,
+        });
         break;
       case "box":
-        note(ac, 523.25, 0, 0.09, 0.18);
-        note(ac, 659.25, 0.06, 0.09, 0.18);
-        note(ac, 783.99, 0.12, 0.12, 0.18);
+        note(ac, 523.25, 0, 0.09, 0.18, scale);
+        note(ac, 659.25, 0.06, 0.09, 0.18, scale);
+        note(ac, 783.99, 0.12, 0.12, 0.18, scale);
         break;
       case "trapSense":
-        tone(ac, { type: "sine", from: 1200, to: 1800, dur: 0.15, vol: 0.1 });
+        tone(ac, {
+          type: "sine",
+          from: 1200,
+          to: 1800,
+          dur: 0.15,
+          vol: 0.1,
+          scale,
+        });
         break;
       case "score":
-        note(ac, 659.25, 0, 0.12, 0.2);
-        note(ac, 880, 0.1, 0.16, 0.2);
+        note(ac, 659.25, 0, 0.12, 0.2, scale);
+        note(ac, 880, 0.1, 0.16, 0.2, scale);
         break;
       case "win":
-        note(ac, 523.25, 0, 0.12, 0.2);
-        note(ac, 659.25, 0.1, 0.12, 0.2);
-        note(ac, 783.99, 0.2, 0.12, 0.2);
-        note(ac, 1046.5, 0.3, 0.25, 0.2);
+        note(ac, 523.25, 0, 0.12, 0.2, scale);
+        note(ac, 659.25, 0.1, 0.12, 0.2, scale);
+        note(ac, 783.99, 0.2, 0.12, 0.2, scale);
+        note(ac, 1046.5, 0.3, 0.25, 0.2, scale);
         break;
       case "lose":
-        note(ac, 392, 0, 0.16, 0.18);
-        note(ac, 329.63, 0.16, 0.16, 0.18);
-        note(ac, 261.63, 0.32, 0.3, 0.18);
+        note(ac, 392, 0, 0.16, 0.18, scale);
+        note(ac, 329.63, 0.16, 0.16, 0.18, scale);
+        note(ac, 261.63, 0.32, 0.3, 0.18, scale);
         break;
       case "drown":
-        noise(ac, 0.3, 0.2, 500);
+        noise(ac, 0.3, 0.2, 500, scale);
         break;
       case "invalid":
-        tone(ac, { type: "square", from: 110, to: 110, dur: 0.1, vol: 0.12 });
+        tone(ac, {
+          type: "square",
+          from: 110,
+          to: 110,
+          dur: 0.1,
+          vol: 0.12,
+          scale,
+        });
+        break;
+      case "turn":
+        // Gentle two-tone: your turn just started.
+        note(ac, 440, 0, 0.12, 0.16, scale);
+        note(ac, 659.25, 0.12, 0.16, 0.16, scale);
         break;
     }
   } catch {
