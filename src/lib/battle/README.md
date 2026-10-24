@@ -7,8 +7,10 @@ of vibes.
 
 - `strategies.ts` — the registry. Every CPU the lab can field, each with a
   stable `id` and a `version` that moves when its behavior changes
-  (`greedy@v1`, `pathfinder@v3`, `full@v4`). The version is what logs
-  record, so tournaments stay comparable across algo tweaks.
+  (`greedy@v1`, `pathfinder@v3`, `full@v4`, `seeker@v1`). The version is
+  what logs record, so tournaments stay comparable across algo tweaks.
+  `seeker` is a lab-only instrument (full + box detours) for measuring
+  box outcomes; the shipped CPU never seeks.
 - `log.ts` — the JSONL event schema (v1) and the `BattleLog` collector.
 - `runner.ts` — `runBattleGame(seed, southId, northId, opts)`: the real
   engine (createGame → autoPlaceSetup → sanitize-choose-apply loop) driven
