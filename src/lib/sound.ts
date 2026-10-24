@@ -28,7 +28,11 @@ export type SoundName =
   | "lose"
   | "drown"
   | "invalid"
-  | "turn";
+  | "turn"
+  | "place"
+  | "start"
+  | "bonus"
+  | "bridge";
 
 const MUTE_KEY = "train-muted";
 
@@ -110,13 +114,23 @@ export function netEventSounds(
           delayMs: 0,
         });
         break;
-      case "box-collected":
-        out.push({
-          name: event.outcome === "booby-trap" ? "trap" : "box",
-          soft: event.player !== seat,
-          delayMs: 0,
-        });
+      case "box-collected": {
+        const soft = event.player !== seat;
+        if (event.outcome === "booby-trap") {
+          out.push({ name: "trap", soft, delayMs: 0 });
+        } else {
+          out.push({ name: "box", soft, delayMs: 0 });
+          // Per-outcome tails, matching local play. Trap sense's tail
+          // is the shimmer, which the net page plays from its own
+          // viewer-scoped reveal diff — never from the event.
+          if (event.outcome === "extra-steps") {
+            out.push({ name: "bonus", soft, delayMs: 180 });
+          } else if (event.outcome === "bridge") {
+            out.push({ name: "bridge", soft, delayMs: 180 });
+          }
+        }
         break;
+      }
       case "piece-drowned":
         out.push({ name: "drown", soft: event.player !== seat, delayMs: 0 });
         break;
@@ -158,10 +172,18 @@ export function playNetEventSounds(
 /** Base sound for a step, plus the trap-sense shimmer whenever the step
     revealed traps. Callers must only use this for the *viewing*
     player's own steps — the CPU's reveals are private (PR #43), so CPU
-    steps play `soundForStepOutcome` alone, never the shimmer. */
+    steps play `soundForStepOutcome` alone, never the shimmer.
+    Box collections also get a delayed tail per outcome (extra-steps
+    sparkles, bridge thuds); trap sense's tail IS the shimmer, and
+    booby gets none — the trap sound already says it. */
 export function playStepSounds(outcome: StepOutcome): void {
   playSound(soundForStepOutcome(outcome));
   if (outcome.revealed.length > 0) playSound("trapSense");
+  if (outcome.box === "extra-steps") {
+    globalThis.setTimeout(() => playSound("bonus"), 180);
+  } else if (outcome.box === "bridge") {
+    globalThis.setTimeout(() => playSound("bridge"), 180);
+  }
 }
 
 let ctx: AudioContext | null = null;
@@ -382,6 +404,31 @@ export function playSound(name: SoundName, soft = false): void {
         // Gentle two-tone: your turn just started.
         note(ac, 440, 0, 0.12, 0.16, scale);
         note(ac, 659.25, 0.12, 0.16, 0.16, scale);
+        break;
+      case "place":
+        // Short setup click.
+        tone(ac, { type: "sine", from: 1000, to: 1000, dur: 0.03, vol: 0.12, scale });
+        break;
+      case "start":
+        // Quick rising two-note "go" when play begins.
+        note(ac, 523.25, 0, 0.1, 0.18, scale);
+        note(ac, 783.99, 0.09, 0.14, 0.18, scale);
+        break;
+      case "bonus":
+        // Extra-steps tail: two quick high sparkles after the box chime.
+        note(ac, 880, 0, 0.06, 0.14, scale);
+        note(ac, 1318.5, 0.06, 0.08, 0.14, scale);
+        break;
+      case "bridge":
+        // Bridge tail: one warm low thud after the box chime.
+        tone(ac, {
+          type: "triangle",
+          from: 330,
+          to: 330,
+          dur: 0.2,
+          vol: 0.16,
+          scale,
+        });
         break;
     }
   } catch {
