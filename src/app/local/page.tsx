@@ -777,11 +777,23 @@ export default function LocalGamePage() {
         </>
       )}
 
-      {message && (
-        <p className="rounded-lg bg-amber-500/15 px-4 py-2 text-center text-sm text-amber-300">
-          {message}
-        </p>
-      )}
+      {/*
+        The banner slot is always rendered with room for two lines
+        (text-sm line-height 20px × 2 + py-2 16px = 56px). It used to
+        mount/unmount with the message, which moved the board below it
+        by ~56px on every click that set or cleared a message — the
+        "scroll shift" on tile clicks. Now only the text and the amber
+        background come and go; the board stays put. A 3-line message
+        on a narrow phone can still grow the slot by one line.
+      */}
+      <p
+        aria-live="polite"
+        className={`min-h-[56px] rounded-lg px-4 py-2 text-center text-sm ${
+          message ? "bg-amber-500/15 text-amber-300" : "text-transparent"
+        }`}
+      >
+        {message ?? " "}
+      </p>
 
       <Board
         tiles={game.tiles}
