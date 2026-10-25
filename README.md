@@ -7,7 +7,7 @@ across the board before your opponent does — and mind the hidden traps.
 needed. The full rules are also in the game itself, under
 [How to play](https://t-rain.vercel.app/rules).
 
-![A local game in progress on the Desert / Dry board](docs/screenshots/local-game.png)
+![A local game in progress on the Desert / Dry board](https://github.com/davideastmond/t-rain/blob/dev/docs/local-game.png?raw=true)
 
 ## How to play
 
@@ -40,7 +40,7 @@ eliminated and the trap is revealed and spent — even mid-turn, and even
 on the goal row, where the trap resolves before scoring.
 
 **Mystery boxes.** One 🎁 mystery box sits in each half of the board, and
-only the *invader* can collect it — step a piece onto the box in enemy
+only the _invader_ can collect it — step a piece onto the box in enemy
 territory to roll what's inside:
 
 - **Extra steps (40%)** — +2 free movement points for that piece, this
@@ -63,7 +63,7 @@ you lose on the spot, no matter the score.
 
 ## Ways to play
 
-![The T-rain home page: local game, CPU battle lab, and online game](docs/screenshots/home.png)
+![The T-rain home page: local game, CPU battle lab, and online game](https://github.com/davideastmond/t-rain/blob/dev/docs/home.png?raw=true)
 
 - **Local game** — against the CPU, or a friend on the same device
   (hotseat). The CPU plays from the same limited view you have: it can't
@@ -93,11 +93,11 @@ Then open [http://localhost:3000](http://localhost:3000).
 Copy these into `.env.local` (gitignored) for local development, and set
 them in the Vercel project settings for production.
 
-| Variable      | Required | Description                                                                                                          |
-| ------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `BASE_URL`    | Yes      | Base domain used to build absolute invite links for online games. e.g. `http://localhost:3000` for dev. `POST /api/games` fails without it. |
+| Variable      | Required | Description                                                                                                                                   |
+| ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL`    | Yes      | Base domain used to build absolute invite links for online games. e.g. `http://localhost:3000` for dev. `POST /api/games` fails without it.   |
 | `MONGODB_URI` | No       | MongoDB Atlas connection string. When unset, the server keeps games in an in-memory store (fine for local dev; games don't survive restarts). |
-| `MONGODB_DB`  | No       | Database name for game records. Defaults to `train`.                                                                  |
+| `MONGODB_DB`  | No       | Database name for game records. Defaults to `train`.                                                                                          |
 
 ### Design docs
 
