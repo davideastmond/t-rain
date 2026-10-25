@@ -7,7 +7,7 @@ across the board before your opponent does — and mind the hidden traps.
 needed. The full rules are also in the game itself, under
 [How to play](https://t-rain.vercel.app/rules).
 
-![A local game in progress on the Desert / Dry board](docs/screenshots/local-game.png)
+![A local game in progress on the Desert / Dry board](local-game.png)
 
 ## How to play
 
@@ -63,7 +63,7 @@ you lose on the spot, no matter the score.
 
 ## Ways to play
 
-![The T-rain home page: local game, CPU battle lab, and online game](docs/screenshots/home.png)
+![The T-rain home page: local game, CPU battle lab, and online game](home.png)
 
 - **Local game** — against the CPU, or a friend on the same device
   (hotseat). The CPU plays from the same limited view you have: it can't
