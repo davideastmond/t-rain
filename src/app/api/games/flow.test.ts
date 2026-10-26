@@ -63,10 +63,19 @@ describe("happy-path game through the routes", () => {
     const seat = playing.currentPlayer as "south" | "north";
     const token = seat === "south" ? game.southToken : game.northToken;
 
+    // The first piece is not always movable: on some boards the
+    // packed setup leaves it boxed in by water and its own pieces
+    // (measured ~6% of random boards), and stepping it then 400s on
+    // a missing target. The test's contract is the version climb, not
+    // which piece moves, so take the first piece that can move.
     const piece = playing.pieces.find(
-      (p: Piece) => p.owner === seat && p.status === "active",
+      (p: Piece) =>
+        p.owner === seat &&
+        p.status === "active" &&
+        legalStepTargets(playing, p.id).length > 0,
     );
-    const to = legalStepTargets(playing, piece.id)[0];
+    expect(piece).toBeDefined();
+    const to = legalStepTargets(playing, piece!.id)[0];
     const stepRes = await stepPost(
       postRequest(`http://test/api/games/${game.gameId}/step?t=${token}`, {
         pieceId: piece.id,

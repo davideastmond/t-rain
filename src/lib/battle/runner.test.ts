@@ -68,7 +68,9 @@ describe("createBattle and battleStep", () => {
     const result = finalizeBattle(driver);
     expect(result.turns).toBeLessThanOrEqual(5);
     expect(result.log.all[result.log.length - 1].type).toBe("game_end");
-  });
+    // Battle turns are expensive (Dijkstra per piece per action); the
+    // 5 s default is too tight on a loaded CI runner.
+  }, 30000);
 });
 
 describe("BattleLog and parseJSONL", () => {
@@ -80,7 +82,10 @@ describe("BattleLog and parseJSONL", () => {
     expect(parsed).toHaveLength(result.log.length);
     expect(parsed[0].type).toBe("game_start");
     expect(parsed[parsed.length - 1].type).toBe("game_end");
-  });
+    // Same 30 s allowance as the other runBattleGame tests: this one
+    // runs the longest game in the file (10 turns) and timed out on
+    // CI under the 5 s default.
+  }, 30000);
 
   it("throws on a malformed line instead of silently dropping it", () => {
     expect(() => parseJSONL('{"type":"game_start"}\nnot json\n')).toThrow();
