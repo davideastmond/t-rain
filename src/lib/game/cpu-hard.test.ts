@@ -1,7 +1,8 @@
-// Phase: Hard CPU v1 (HARD_CPU_SPEC.md rollout step 2) — danger-aware
-// racing only. States are built minimally (a few pieces, pinned plains
-// columns) so route costs are exact regardless of the generated board:
-// a straight plains column is always the cheapest route for its piece.
+// Phase: Hard CPU v2 (HARD_CPU_SPEC.md rollout step 3) — danger-aware
+// racing (v1) plus score-first and generalized interception. States are
+// built minimally (a few pieces, pinned plains columns) so route costs
+// are exact regardless of the generated board: a straight plains
+// column is always the cheapest route for its piece.
 import { describe, expect, it } from "vitest";
 
 import { getStrategy } from "../battle/strategies";
@@ -9,11 +10,19 @@ import { chooseCpuStep } from "./cpu";
 import {
   chooseHardAction,
   chooseHardRaceStep,
+  chooseScoringStep,
   HARD_DANGER_COST,
   isDangerTile,
+  shouldInterceptHard,
 } from "./cpu-hard";
 import { createGame } from "./setup";
-import type { CharacterId, GameState, Piece, PlayerId } from "./types";
+import type {
+  CharacterId,
+  GameState,
+  Piece,
+  PlayerId,
+  TerrainType,
+} from "./types";
 
 function piece(
   id: string,
@@ -163,7 +172,163 @@ describe("chooseHardAction", () => {
 });
 
 describe("hard strategy registration", () => {
-  it("is registered as hard@v1", () => {
-    expect(getStrategy("hard").version).toBe("hard@v1");
+  it("is registered as hard@v2", () => {
+    expect(getStrategy("hard").version).toBe("hard@v2");
+  });
+});
+
+// Override tiles in a state: pins is a list of [x, y, terrain].
+function pinTiles(
+  state: GameState,
+  pins: Array<[number, number, TerrainType]>,
+): GameState {
+  const pinMap = new Map(pins.map(([x, y, t]) => [`${x},${y}`, t]));
+  return {
+    ...state,
+    tiles: state.tiles.map((t) => {
+      const terrain = pinMap.get(`${t.position.x},${t.position.y}`);
+      return terrain ? { ...t, terrain } : t;
+    }),
+  };
+}
+
+function columnState(
+  pieces: Piece[],
+  patch: Partial<GameState> = {},
+): GameState {
+  // Pin the whole x=10 column to plains so every route on it is a
+  // straight column with an exact step count.
+  const pins: Array<[number, number, TerrainType]> = [];
+  for (let y = 0; y <= 30; y++) pins.push([10, y, "plains"]);
+  return pinTiles(stateWith(pieces, patch), pins);
+}
+
+describe("chooseScoringStep", () => {
+  // South scorer at (5,1) with the goal tile (5,0) pinned plains, a
+  // south hunter at (11,11) holding a token, and a north runner at
+  // (12,12) the hunt would chase (dog's route to (11,12) costs 1).
+  function scoreVsHuntState(): GameState {
+    return pinTiles(
+      stateWith(
+        [
+          piece("south-cat", "cat", "south", 5, 1),
+          piece("south-dog", "dog", "south", 11, 11),
+          piece("north-cat", "cat", "north", 12, 12),
+        ],
+        { nerfTokens: { north: 0, south: 1 } },
+      ),
+      [
+        [5, 0, "plains"],
+        [11, 12, "plains"],
+        [12, 11, "water"],
+      ],
+    );
+  }
+
+  it("takes the scoring step before a live nerf hunt", () => {
+    const state = scoreVsHuntState();
+    expect(chooseScoringStep(state, "south")).toEqual({
+      pieceId: "south-cat",
+      to: { x: 5, y: 0 },
+    });
+    expect(chooseHardAction(state, "south")).toEqual({
+      kind: "step",
+      pieceId: "south-cat",
+      to: { x: 5, y: 0 },
+    });
+  });
+
+  it("hunts when no scoring step exists", () => {
+    const withScorer = scoreVsHuntState();
+    const state = {
+      ...withScorer,
+      pieces: withScorer.pieces.filter((p) => p.id !== "south-cat"),
+    };
+    expect(chooseHardAction(state, "south")).toEqual({
+      kind: "step",
+      pieceId: "south-dog",
+      to: { x: 11, y: 12 },
+    });
+  });
+
+  it("does not count a goal tile under a known live trap as scoring", () => {
+    const base = pinTiles(
+      stateWith([piece("south-cat", "cat", "south", 5, 1)]),
+      [[5, 0, "plains"]],
+    );
+    expect(chooseScoringStep(base, "south")).toEqual({
+      pieceId: "south-cat",
+      to: { x: 5, y: 0 },
+    });
+    const trapped = {
+      ...base,
+      traps: [{ owner: "north" as const, position: { x: 5, y: 0 }, triggered: false }],
+    };
+    expect(chooseScoringStep(trapped, "south")).toBeNull();
+    // And the action falls through to racing, which routes around the
+    // revealed trap rather than onto it.
+    const action = chooseHardAction(trapped, "south");
+    expect(action?.kind).toBe("step");
+    if (action?.kind === "step") {
+      expect(action.to).not.toEqual({ x: 5, y: 0 });
+    }
+  });
+});
+
+describe("shouldInterceptHard and interception", () => {
+  it("fires on the generalized trigger: foe close, hard further back", () => {
+    const state = columnState([
+      piece("south-dog", "dog", "south", 10, 8),
+      piece("north-cat", "cat", "north", 10, 25),
+    ]);
+    expect(shouldInterceptHard(state, "south")).toBe(true);
+    // The interceptor heads DOWN the column onto the threat's path,
+    // where racing would head up toward its own goal.
+    expect(chooseHardAction(state, "south")).toEqual({
+      kind: "step",
+      pieceId: "south-dog",
+      to: { x: 10, y: 9 },
+    });
+  });
+
+  it("preserves full's old spoiler window when the foe is far away", () => {
+    const state = columnState(
+      [
+        piece("south-dog", "dog", "south", 10, 8),
+        piece("north-cat", "cat", "north", 10, 15),
+      ],
+      { scores: { north: 4, south: 0 } },
+    );
+    // 15 steps out, the generalized trigger says no — but the old
+    // window (foe needs 1, hard needs 5) still fires.
+    expect(shouldInterceptHard(state, "south")).toBe(true);
+    expect(chooseHardAction(state, "south")).toEqual({
+      kind: "step",
+      pieceId: "south-dog",
+      to: { x: 10, y: 9 },
+    });
+  });
+
+  it("does not fire when hard is not far enough behind", () => {
+    // Side tiles pinned to water so the straight column is the unique
+    // cheapest race route (Dijkstra ties could otherwise pick a side
+    // column first step with the same cost).
+    const state = pinTiles(
+      columnState([
+        piece("south-dog", "dog", "south", 10, 6),
+        piece("north-cat", "cat", "north", 10, 25),
+      ]),
+      [
+        [9, 6, "water"],
+        [11, 6, "water"],
+      ],
+    );
+    // Foe 5 steps out, hard 6 — only 1 behind, so it races.
+    expect(shouldInterceptHard(state, "south")).toBe(false);
+    expect(chooseHardAction(state, "south")).toEqual({
+      kind: "step",
+      pieceId: "south-dog",
+      to: { x: 10, y: 5 },
+    });
   });
 });
