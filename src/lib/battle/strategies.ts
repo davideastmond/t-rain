@@ -10,12 +10,16 @@
 // spoiler mode, pathfinding). "pathfinder" is the same Dijkstra routing
 // without nerfs or spoiler play. "greedy" is the original PR #9
 // heuristic, kept as the baseline every fancier CPU has to beat.
+// "hard" is Hard v1 (HARD_CPU_SPEC.md rollout step 2): full's
+// composition with danger-aware racing — everything else identical,
+// so its edge over full, if any, comes from danger alone.
 // "seeker" is a lab-only instrument: full's exact composition with one
 // insertion — a detour to collect its mystery box when the detour is
 // cheap — so box outcomes (trap sense included) finally occur often
 // enough in tournaments to measure. The shipped CPU does not seek.
 
 import { tileIndex } from "../game/board";
+import { chooseHardAction } from "../game/cpu-hard";
 import {
   chooseCpuAction,
   chooseCpuStep,
@@ -246,6 +250,12 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
     version: "seeker@v1",
     label: "Seeker v1 (full + box detours, lab only)",
     choose: chooseSeekerAction,
+  },
+  {
+    id: "hard",
+    version: "hard@v1",
+    label: "Hard v1 (full + danger-aware racing)",
+    choose: chooseHardAction,
   },
 ];
 
