@@ -13,7 +13,7 @@ import Link from "next/link";
 
 import Board from "@/components/Board";
 import { PIECES_TO_WIN } from "@/lib/game/constants";
-import { BIOME_PALETTES } from "@/lib/game/palettes";
+import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
 import type { GameState, PlayerId } from "@/lib/game/types";
 import {
   battleStep,
@@ -232,7 +232,7 @@ export default function CpuBattlePage() {
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-center gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <span className="font-semibold text-sky-300">South</span>
+          <span style={{ color: PLAYER_COLORS.south }} className="font-semibold">South</span>
           <select
             value={southId}
             onChange={(e) => setSouthId(e.target.value)}
@@ -248,7 +248,7 @@ export default function CpuBattlePage() {
         </label>
         <span className="text-neutral-500">vs</span>
         <label className="flex items-center gap-2 text-sm">
-          <span className="font-semibold text-red-300">North</span>
+          <span style={{ color: PLAYER_COLORS.north }} className="font-semibold">North</span>
           <select
             value={northId}
             onChange={(e) => setNorthId(e.target.value)}
@@ -324,7 +324,8 @@ export default function CpuBattlePage() {
               }`}
             >
               <p
-                className={`text-sm font-semibold ${player === "south" ? "text-sky-300" : "text-red-300"}`}
+                style={{ color: PLAYER_COLORS[player] }}
+                className="text-sm font-semibold"
               >
                 {playerLabel(player)} · {versions[player]}
               </p>
