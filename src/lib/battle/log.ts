@@ -40,6 +40,8 @@ export interface GameStartEvent {
   /** ISO timestamp of when the game started. */
   ts: string;
   strategies: StrategyVersions;
+  /** Setup strategy versions, same shape (e.g. "choke@v1"). */
+  setups: StrategyVersions;
   /** RNG seed for the strategies' own randomness (tiebreaks etc.). */
   strategyRngSeed: number;
   /** Snapshot of the tunables, so a later constants change can't silently reinterpret old logs. */

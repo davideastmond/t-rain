@@ -36,10 +36,14 @@ import {
   getPiece,
   movePieceStep,
 } from "../game/movement";
-import { autoPlaceSetup, createGame } from "../game/setup";
+import { createGame } from "../game/setup";
 import { createSeededRng } from "../game/rng";
 import type { GameState, PlayerId } from "../game/types";
 import { BattleLog, type GameEndReason, type MoveEvent } from "./log";
+import {
+  getSetupStrategy,
+  type SetupStrategy,
+} from "./setup-strategies";
 import { getStrategy, sanitizeForPlayer, type CpuStrategy } from "./strategies";
 
 export interface BattleOptions {
@@ -49,6 +53,9 @@ export interface BattleOptions {
   strategyRngSeed?: number;
   /** Logged in game_start. Defaults to `battle-${seed}`. */
   gameId?: string;
+  /** Setup strategy per side. Defaults to `auto` (current behavior). */
+  southSetupId?: string;
+  northSetupId?: string;
 }
 
 export interface BattleResult {
@@ -65,6 +72,7 @@ export interface BattleDriver {
   state: GameState;
   log: BattleLog;
   strategies: Record<PlayerId, CpuStrategy>;
+  setups: Record<PlayerId, SetupStrategy>;
   rng: () => number;
   maxTurns: number;
   turns: number;
@@ -98,15 +106,19 @@ export function createBattle(
     south: getStrategy(southStrategyId),
     north: getStrategy(northStrategyId),
   };
+  const setups: Record<PlayerId, SetupStrategy> = {
+    south: getSetupStrategy(opts.southSetupId ?? "auto"),
+    north: getSetupStrategy(opts.northSetupId ?? "auto"),
+  };
 
   const log = new BattleLog();
   const rng = createSeededRng(strategyRngSeed);
 
   let state = createGame(seed);
-  const southSetup = autoPlaceSetup(state, "south");
-  if (!southSetup.ok) throw new Error(`south auto-setup failed: ${southSetup.error}`);
-  const northSetup = autoPlaceSetup(southSetup.state, "north");
-  if (!northSetup.ok) throw new Error(`north auto-setup failed: ${northSetup.error}`);
+  const southSetup = setups.south.choose(state, "south");
+  if (!southSetup.ok) throw new Error(`south setup (${setups.south.id}) failed: ${southSetup.error}`);
+  const northSetup = setups.north.choose(southSetup.state, "north");
+  if (!northSetup.ok) throw new Error(`north setup (${setups.north.id}) failed: ${northSetup.error}`);
   state = northSetup.state;
 
   log.push({
@@ -116,6 +128,7 @@ export function createBattle(
     seed,
     ts: new Date().toISOString(),
     strategies: { south: strategies.south.version, north: strategies.north.version },
+    setups: { south: setups.south.version, north: setups.north.version },
     strategyRngSeed,
     tunables: {
       movementPointsPerTurn: MOVEMENT_POINTS_PER_TURN,
@@ -152,6 +165,7 @@ export function createBattle(
     state,
     log,
     strategies,
+    setups,
     rng,
     maxTurns,
     turns: 0,
