@@ -225,3 +225,9 @@ board rather than shipping a "Hard" that isn't.
   (score difference, advancement sum, pieces alive) over candidate
   first actions. The most powerful item on this list and the most
   expensive; only after v1 ships and its bar is met.
+
+Phase 2 is now specified in full: see `HARD_CPU_PHASE2_SPEC.md`
+(choke-point trap setup with a path-count choke ranking, nerf economy
+with a spend threshold, and 1-ply lookahead), including the lab
+per-strategy setup hook, fresh measurement seeds 300–319, and the
+one-PR-at-a-time rollout.
