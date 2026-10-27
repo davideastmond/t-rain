@@ -1,6 +1,6 @@
 // The how-to-play page: a broad overview of the rules for new players.
-// Copy mirrors RULES.md; the numbers come from the game constants so
-// they can't drift from the engine.
+// Copy mirrors the README's How to play; the numbers come from the game
+// constants so they can't drift from the engine.
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -189,6 +189,33 @@ export default function RulesPage() {
         <p>
           If you ever drop below {PIECES_TO_WIN} pieces able to score, you
           lose on the spot — no matter the score.
+        </p>
+      </Section>
+
+      <Section title="Playing against the CPU">
+        <p>
+          The CPU plays fair: it sees exactly what you see, and it
+          can&apos;t peek at your untriggered traps. Local games offer two
+          difficulties, picked before the game starts:
+        </p>
+        <ul className="list-disc pl-6">
+          <li>
+            <strong className="text-neutral-100">Normal</strong> — a solid,
+            straightforward game: it grabs scoring chances, removes enemy
+            pieces standing next to its own, and races
+          </li>
+          <li>
+            <strong className="text-neutral-100">Hard</strong> — it thinks
+            one step further, imagining your best reply before it moves,
+            and it hides its traps where the board forces everyone through
+            the same few tiles
+          </li>
+        </ul>
+        <p>
+          One thing testing taught us: a chance to remove an adjacent
+          piece rarely comes back, so the CPU takes it when it has it —
+          and it never goes out of its way chasing a mystery box, since
+          detouring for one costs more races than it wins.
         </p>
       </Section>
 
