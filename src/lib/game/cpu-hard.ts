@@ -1,12 +1,25 @@
-// Hard CPU, v2: `full`'s composition with danger-aware racing,
-// score-first, and generalized interception.
+// Hard CPU, v4: v2's rules plus 1-ply lookahead.
 //
-// Rollout step 3 (HARD_CPU_SPEC.md): step 2's danger-aware racing stays,
-// and two more rules layer on top — an explicit scoring step outranks
-// everything but a nerf, and interception fires whenever the opponent
-// is genuinely ahead (not just in `full`'s narrow spoiler window).
-// Selective seeking arrives in a later PR; this file must not grow it
-// early, so each increment stays measurable on its own.
+// Rollout step 4 (HARD_CPU_PHASE2_SPEC.md §3): the v3 nerf threshold
+// was measured negative twice and dropped — it never shipped, so this
+// version builds on v2, not v3. The hand rules stay and now supply
+// lookahead's candidates (nerf, scoring step, hunt, interception,
+// danger race, in priority order). Each candidate is simulated, then
+// the opponent's best reply under `full`'s policy is simulated, and
+// the resulting position is evaluated. The best-evaluated candidate
+// wins; ties keep priority order.
+//
+// Fairness, same as ever: decisions come from the sanitized view.
+// The opponent's simulated reply is chosen from *their* sanitized
+// view (they can't route around traps they can't see); only the
+// outcome is computed on the true simulated state, which is exactly
+// how the real game resolves a blind reply against the mover's traps.
+//
+// Approximation, documented: the opponent reply is simulated with a
+// fresh pool and the player switched, but without endTurn side effects
+// (pending-token flips, drowning). Those change the evaluation by at
+// most a token or a bridge piece, and running full turn semantics
+// inside every candidate would cost more than the ply is worth.
 //
 // Danger: a step that ends orthogonally adjacent to an enemy piece is
 // dangerous when that enemy's owner holds a usable nerf token. Usable
@@ -24,20 +37,37 @@
 // view the caller passes in. Nothing in this file reads hidden traps.
 
 import { tileIndex } from "./board";
-import { GOAL_ROW } from "./constants";
+import { GOAL_ROW, MOVEMENT_POINTS_PER_TURN } from "./constants";
 import {
   chooseCpuAction,
   chooseNerfHuntStep,
   chooseSpoilerStep,
   findPathToGoal,
   piecesToWin,
+  sanitizeForPlayer,
   type CpuAction,
   type CpuStep,
 } from "./cpu";
-import { legalStepTargets } from "./movement";
-import { nerfTargets } from "./nerf";
+import { legalStepTargets, movePieceStep } from "./movement";
+import { applyNerf, nerfTargets } from "./nerf";
 import { otherPlayer } from "./setup";
 import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./types";
+
+/** Lookahead evaluation weights (tunable, see HARD_CPU_PHASE2_SPEC.md
+    §3.1 — initial values, tuned on a probe set before the tournament,
+    not locked blind). W_SCORE is deliberately larger than the maximum
+    positional swing (30 rows × 10 + 15 pieces × 5 + 2 tokens × 3 =
+    381), so a point always beats any positional term — scoring must
+    never lose to hunting or racing on evaluation arithmetic. */
+export const LOOKAHEAD_W_SCORE = 1000;
+export const LOOKAHEAD_W_STEPS = 10;
+export const LOOKAHEAD_W_PIECES = 5;
+export const LOOKAHEAD_W_TOKENS = 3;
+/** Candidate cap (the hand rules yield at most 5, so this never binds
+    today — it bounds future candidate sources). */
+export const LOOKAHEAD_CANDIDATES = 8;
+/** Evaluation for a finished game, from the winner's perspective. */
+const WIN_VALUE = 100000;
 
 /** Extra route cost for ending a step on a danger tile (tunable). */
 export const HARD_DANGER_COST = 2;
@@ -210,28 +240,146 @@ export function shouldInterceptHard(view: GameState, player: PlayerId): boolean 
  * danger-aware race step. Returns null when there's nothing legal to
  * do, which is the caller's cue to end the turn.
  */
+/** Fewest rows any active piece of `player` is from its goal row
+    (row distance, not Dijkstra steps — a cheap advancement proxy for
+    evaluation; the candidate choosers already did the real routing). */
+function bestRowDistance(view: GameState, player: PlayerId): number {
+  const goalY = GOAL_ROW[player];
+  let best = Infinity;
+  for (const piece of view.pieces) {
+    if (piece.owner !== player || piece.status !== "active") continue;
+    best = Math.min(best, Math.abs(piece.position.y - goalY));
+  }
+  return best === Infinity ? 31 : best;
+}
+
+/**
+ * Position evaluation from `player`'s perspective: score difference
+ * dominates, then advancement (opponent's best minus own best, so
+ * closing in counts), then material, then usable tokens. A finished
+ * game is worth far more than any positional term.
+ */
+export function evaluatePosition(view: GameState, player: PlayerId): number {
+  if (view.phase === "finished") {
+    if (view.winner === player) return WIN_VALUE;
+    if (view.winner) return -WIN_VALUE;
+    return 0;
+  }
+  const foe = otherPlayer(player);
+  const scoreDiff = view.scores[player] - view.scores[foe];
+  const stepsDiff = bestRowDistance(view, foe) - bestRowDistance(view, player);
+  const myActive = view.pieces.filter(
+    (p) => p.owner === player && p.status === "active",
+  ).length;
+  const foeActive = view.pieces.filter(
+    (p) => p.owner === foe && p.status === "active",
+  ).length;
+  const tokenDiff = view.nerfTokens[player] - view.nerfTokens[foe];
+  return (
+    LOOKAHEAD_W_SCORE * scoreDiff +
+    LOOKAHEAD_W_STEPS * stepsDiff +
+    LOOKAHEAD_W_PIECES * (myActive - foeActive) +
+    LOOKAHEAD_W_TOKENS * tokenDiff
+  );
+}
+
+/** Apply an action to a state, or null when the engine refuses it
+    (candidates come from legal choosers, so this is defensive). */
+function applyAction(
+  state: GameState,
+  player: PlayerId,
+  action: CpuAction,
+): GameState | null {
+  if (action.kind === "nerf") {
+    const result = applyNerf(state, player, action.targetPieceId);
+    return result.ok ? result.state : null;
+  }
+  const result = movePieceStep(state, action.pieceId, action.to);
+  return result.ok ? result.state : null;
+}
+
+function sameAction(a: CpuAction, b: CpuAction): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "nerf" && b.kind === "nerf") {
+    return a.targetPieceId === b.targetPieceId;
+  }
+  if (a.kind === "step" && b.kind === "step") {
+    return (
+      a.pieceId === b.pieceId && a.to.x === b.to.x && a.to.y === b.to.y
+    );
+  }
+  return false;
+}
+
+/**
+ * One Hard action by 1-ply lookahead: collect the hand rules'
+ * candidates in priority order (nerf, scoring step, hunt,
+ * interception, danger race), simulate each plus the opponent's best
+ * reply under `full`'s policy, and return the best-evaluated one.
+ * Ties keep priority order. Returns null when no rule has anything,
+ * which is the caller's cue to end the turn.
+ */
 export function chooseHardAction(
   view: GameState,
   player: PlayerId,
   rng: () => number = Math.random,
 ): CpuAction | null {
   if (view.phase !== "playing" || view.currentPlayer !== player) return null;
+  const foe = otherPlayer(player);
 
+  const candidates: CpuAction[] = [];
+  const push = (action: CpuAction | null) => {
+    if (action && !candidates.some((c) => sameAction(c, action))) {
+      candidates.push(action);
+    }
+  };
   if (nerfTargets(view, player).length > 0) {
-    return chooseCpuAction(view, player, rng);
+    push(chooseCpuAction(view, player, rng));
   }
-
   const scoring = chooseScoringStep(view, player, rng);
-  if (scoring) return { kind: "step", ...scoring };
-
+  if (scoring) push({ kind: "step", ...scoring });
   const hunt = chooseNerfHuntStep(view, player, rng);
-  if (hunt) return { kind: "step", ...hunt };
-
+  if (hunt) push({ kind: "step", ...hunt });
   if (shouldInterceptHard(view, player)) {
     const spoiler = chooseSpoilerStep(view, player, rng);
-    if (spoiler) return { kind: "step", ...spoiler };
+    if (spoiler) push({ kind: "step", ...spoiler });
   }
+  const race = chooseHardRaceStep(view, player, rng);
+  if (race) push({ kind: "step", ...race });
 
-  const step = chooseHardRaceStep(view, player, rng);
-  return step ? { kind: "step", ...step } : null;
+  const shortlist = candidates.slice(0, LOOKAHEAD_CANDIDATES);
+  if (shortlist.length === 0) return null;
+
+  let best: CpuAction | null = null;
+  let bestScore = -Infinity;
+  for (const candidate of shortlist) {
+    const sim = applyAction(view, player, candidate);
+    if (!sim) continue;
+    let evaluated = sim;
+    if (sim.phase !== "finished") {
+      // Opponent's turn, fresh pool; reply chosen from their
+      // sanitized view (see the header comment on fairness).
+      const replyState: GameState = {
+        ...sim,
+        currentPlayer: foe,
+        movementPointsLeft: MOVEMENT_POINTS_PER_TURN,
+        spentThisTurn: {},
+      };
+      const reply = chooseCpuAction(
+        sanitizeForPlayer(replyState, foe),
+        foe,
+        rng,
+      );
+      if (reply) {
+        const replySim = applyAction(replyState, foe, reply);
+        if (replySim) evaluated = replySim;
+      }
+    }
+    const score = evaluatePosition(evaluated, player);
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
 }

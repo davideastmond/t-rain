@@ -1,8 +1,8 @@
-// Phase: Hard CPU v2 (HARD_CPU_SPEC.md rollout step 3) — danger-aware
-// racing (v1) plus score-first and generalized interception. States are
-// built minimally (a few pieces, pinned plains columns) so route costs
-// are exact regardless of the generated board: a straight plains
-// column is always the cheapest route for its piece.
+// Phase: Hard CPU v4 (HARD_CPU_PHASE2_SPEC.md §3) — v2's rules plus
+// 1-ply lookahead. States are built minimally (a few pieces, pinned
+// plains columns) so route costs are exact regardless of the generated
+// board: a straight plains column is always the cheapest route for
+// its piece.
 import { describe, expect, it } from "vitest";
 
 import { getStrategy } from "../battle/strategies";
@@ -11,6 +11,7 @@ import {
   chooseHardAction,
   chooseHardRaceStep,
   chooseScoringStep,
+  evaluatePosition,
   HARD_DANGER_COST,
   isDangerTile,
   shouldInterceptHard,
@@ -172,8 +173,8 @@ describe("chooseHardAction", () => {
 });
 
 describe("hard strategy registration", () => {
-  it("is registered as hard@v2", () => {
-    expect(getStrategy("hard").version).toBe("hard@v2");
+  it("is registered as hard@v4", () => {
+    expect(getStrategy("hard").version).toBe("hard@v4");
   });
 });
 
@@ -238,16 +239,28 @@ describe("chooseScoringStep", () => {
     });
   });
 
-  it("hunts when no scoring step exists", () => {
-    const withScorer = scoreVsHuntState();
-    const state = {
-      ...withScorer,
-      pieces: withScorer.pieces.filter((p) => p.id !== "south-cat"),
-    };
-    expect(chooseHardAction(state, "south")).toEqual({
+  it("races instead of hunting a distant runner under lookahead", () => {
+    // 1-ply lookahead cannot price hunt's payoff (the nerf lands next
+    // turn, beyond the horizon): hunting moves the dog away from its
+    // goal this turn, so racing wins the evaluation. The tournament
+    // judges whether that trade is good.
+    const state = pinTiles(
+      columnState(
+        [
+          piece("south-dog", "dog", "south", 10, 8),
+          piece("north-cat", "cat", "north", 10, 10),
+        ],
+        { nerfTokens: { north: 0, south: 1 } },
+      ),
+      [
+        [9, 8, "water"],
+        [11, 8, "water"],
+      ],
+    );
+    expect(chooseHardAction(state, "south", () => 0.5)).toEqual({
       kind: "step",
       pieceId: "south-dog",
-      to: { x: 11, y: 12 },
+      to: { x: 10, y: 7 },
     });
   });
 
@@ -276,36 +289,51 @@ describe("chooseScoringStep", () => {
 });
 
 describe("shouldInterceptHard and interception", () => {
-  it("fires on the generalized trigger: foe close, hard further back", () => {
-    const state = columnState([
-      piece("south-dog", "dog", "south", 10, 8),
-      piece("north-cat", "cat", "north", 10, 25),
-    ]);
+  it("trigger still fires, but lookahead races instead of trekking", () => {
+    // The trigger predicate is unchanged, but the intercept step heads
+    // DOWN the column (away from Hard's goal) toward a path 18 steps
+    // away — a multi-turn plan with no 1-ply payoff — so racing wins
+    // the evaluation. Side tiles pinned to water force the unique
+    // race step.
+    const state = pinTiles(
+      columnState([
+        piece("south-dog", "dog", "south", 10, 8),
+        piece("north-cat", "cat", "north", 10, 25),
+      ]),
+      [
+        [9, 8, "water"],
+        [11, 8, "water"],
+      ],
+    );
     expect(shouldInterceptHard(state, "south")).toBe(true);
-    // The interceptor heads DOWN the column onto the threat's path,
-    // where racing would head up toward its own goal.
-    expect(chooseHardAction(state, "south")).toEqual({
+    expect(chooseHardAction(state, "south", () => 0.5)).toEqual({
       kind: "step",
       pieceId: "south-dog",
-      to: { x: 10, y: 9 },
+      to: { x: 10, y: 7 },
     });
   });
 
-  it("preserves full's old spoiler window when the foe is far away", () => {
-    const state = columnState(
+  it("old spoiler window: trigger true, lookahead still races", () => {
+    const state = pinTiles(
+      columnState(
+        [
+          piece("south-dog", "dog", "south", 10, 8),
+          piece("north-cat", "cat", "north", 10, 15),
+        ],
+        { scores: { north: 4, south: 0 } },
+      ),
       [
-        piece("south-dog", "dog", "south", 10, 8),
-        piece("north-cat", "cat", "north", 10, 15),
+        [9, 8, "water"],
+        [11, 8, "water"],
       ],
-      { scores: { north: 4, south: 0 } },
     );
     // 15 steps out, the generalized trigger says no — but the old
-    // window (foe needs 1, hard needs 5) still fires.
+    // window (foe needs 1, hard needs 5) still fires as a predicate.
     expect(shouldInterceptHard(state, "south")).toBe(true);
-    expect(chooseHardAction(state, "south")).toEqual({
+    expect(chooseHardAction(state, "south", () => 0.5)).toEqual({
       kind: "step",
       pieceId: "south-dog",
-      to: { x: 10, y: 9 },
+      to: { x: 10, y: 7 },
     });
   });
 
@@ -330,5 +358,73 @@ describe("shouldInterceptHard and interception", () => {
       pieceId: "south-dog",
       to: { x: 10, y: 5 },
     });
+  });
+});
+
+describe("evaluatePosition", () => {
+  it("ranks a point above any positional term, and a win above all", () => {
+    const base = stateWith([
+      piece("south-cat", "cat", "south", 5, 5),
+      piece("north-cat", "cat", "north", 5, 25),
+    ]);
+    const upOne = { ...base, scores: { north: 2, south: 3 } };
+    const even = { ...base, scores: { north: 2, south: 2 } };
+    // Everything else equal, so the difference is exactly one point.
+    expect(evaluatePosition(upOne, "south") - evaluatePosition(even, "south")).toBe(1000);
+    const won = { ...base, phase: "finished" as const, winner: "south" as const };
+    const lost = { ...base, phase: "finished" as const, winner: "north" as const };
+    expect(evaluatePosition(won, "south")).toBe(100000);
+    expect(evaluatePosition(lost, "south")).toBe(-100000);
+  });
+
+  it("prefers the closer best runner, all else equal", () => {
+    const close = stateWith([
+      piece("south-cat", "cat", "south", 10, 5),
+      piece("north-cat", "cat", "north", 10, 20),
+    ]);
+    const far = stateWith([
+      piece("south-cat", "cat", "south", 10, 10),
+      piece("north-cat", "cat", "north", 10, 20),
+    ]);
+    // South best 5 vs 10 rows out; foe best 10 both → 5 rows × 10.
+    expect(evaluatePosition(close, "south") - evaluatePosition(far, "south")).toBe(50);
+  });
+});
+
+describe("chooseHardAction lookahead", () => {
+  it("picks the scoring step over hunting and racing", () => {
+    const state = pinTiles(
+      stateWith(
+        [
+          piece("south-cat", "cat", "south", 5, 1),
+          piece("south-dog", "dog", "south", 11, 11),
+          piece("north-cat", "cat", "north", 12, 12),
+        ],
+        { nerfTokens: { north: 0, south: 1 } },
+      ),
+      [
+        [5, 0, "plains"],
+        [11, 12, "plains"],
+        [12, 11, "water"],
+      ],
+    );
+    expect(chooseHardAction(state, "south", () => 0.5)).toEqual({
+      kind: "step",
+      pieceId: "south-cat",
+      to: { x: 5, y: 0 },
+    });
+  });
+
+  it("is deterministic for a fixed rng", () => {
+    const state = dangerState(1);
+    const rng = () => 0.5;
+    expect(chooseHardAction(state, "south", rng)).toEqual(
+      chooseHardAction(state, "south", rng),
+    );
+  });
+
+  it("returns null when it is not that player's turn", () => {
+    const state = dangerState(1);
+    expect(chooseHardAction({ ...state, currentPlayer: "north" }, "south")).toBeNull();
   });
 });
