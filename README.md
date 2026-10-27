@@ -61,18 +61,46 @@ trap check, no moving required.
 **Losing by attrition.** If you ever drop below 5 pieces able to score,
 you lose on the spot, no matter the score.
 
+## How the CPU thinks
+
+The CPU plays fair: it sees exactly what you see. It can't peek at your
+untriggered traps, and you can't peek at its. So every step is a guess
+against what the other side might have hidden — the whole game is about
+managing that uncertainty.
+
+Local games offer two difficulties, picked before the game starts:
+
+- **Normal** plays a solid, straightforward game: it grabs scoring
+  chances, removes enemy pieces standing next to its own, and races.
+- **Hard** thinks one step further. Before it moves, it imagines your
+  best reply — and picks the move that still looks best after you've
+  answered. It also hides its traps where the board forces everyone
+  through the same few tiles: the narrow crossings every route has to
+  use, so a trap there catches far more than a trap placed at random.
+
+A few things testing taught us, baked into how the CPU plays:
+
+- **Take the opening when you have it.** A chance to remove an adjacent
+  piece rarely comes back — holding it for a better one usually means
+  losing it entirely.
+- **Don't chase the shiny box.** Detouring for a mystery box costs more
+  races than it wins, so the CPU never goes out of its way for one.
+- **Prove it with games, not hunches.** Every CPU change is measured in
+  tournaments against the old one before it ships — see the battle lab
+  below and `src/lib/battle/hard-cpu-final-report.md`.
+
 ## Ways to play
 
 ![The T-rain home page: local game, CPU battle lab, and online game](https://github.com/davideastmond/t-rain/blob/dev/docs/home.png?raw=true)
 
-- **Local game** — against the CPU, or a friend on the same device
-  (hotseat). The CPU plays from the same limited view you have: it can't
-  see your untriggered traps.
+- **Local game** — against the CPU (Normal or Hard, picked before the
+  game starts), or a friend on the same device (hotseat).
 - **Online game** — create a game from the home page and share the invite
   link. The server holds the game state, your opponent's traps stay
   hidden, and turns sync automatically. First player is random.
-- **CPU battle lab** — watch CPU strategies play each other, run
-  tournaments, and download JSONL logs for tuning.
+- **CPU battle lab** — watch CPU players face each other, run
+  tournaments, and download logs of every game for tuning. See
+  `src/lib/battle/README.md`.
 
 Sound effects are synthesized in-game (Web Audio, no audio files) with a
 mute toggle on every game screen.
@@ -107,5 +135,7 @@ The full specs live at the repo root and stay in sync with the engine:
 - `NETWORK_SPEC.md` — online play, polling, and hidden information.
 - `NERF_SPEC.md` — nerf tokens and costs.
 - `POWERUPS_SPEC.md` — mystery boxes, including trap sense.
-- `CPU_STRATEGY.md` — the CPU's nerf → hunt → spoiler → race design.
+- `CPU_STRATEGY.md` — how the CPU decides what to do.
+- `HARD_CPU_SPEC.md` / `HARD_CPU_PHASE2_SPEC.md` — the Hard difficulty:
+  how it was designed and measured.
 - `SOUND_SPEC.md` — sound effects.
