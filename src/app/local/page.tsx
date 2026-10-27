@@ -33,7 +33,13 @@ import Link from "next/link";
 
 import Board, { tileKey } from "@/components/Board";
 import SetupTray, { type SetupMode } from "@/components/SetupTray";
-import { chooseCpuAction, sanitizeForPlayer } from "@/lib/game/cpu";
+import { sanitizeForPlayer } from "@/lib/game/cpu";
+import {
+  chooseDifficultyAction,
+  chooseDifficultySetup,
+  CPU_DIFFICULTIES,
+  type CpuDifficulty,
+} from "@/lib/game/difficulty";
 import {
   CHARACTERS,
   EXTRA_STEPS_POINTS,
@@ -155,6 +161,7 @@ export default function LocalGamePage() {
   // from the previous game's positions.
   const [gameId, setGameId] = useState(0);
   const [cpuMode, setCpuMode] = useState(true);
+  const [difficulty, setDifficulty] = useState<CpuDifficulty>("normal");
   // Sound on by default; the persisted preference takes over after
   // hydration (the server snapshot is always "on", so no mismatch).
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
@@ -412,9 +419,10 @@ export default function LocalGamePage() {
   }
 
   function startGame() {
-    // North's setup is auto-placed by the same engine — its traps stay
-    // hidden because displayTraps never includes them.
-    const result = autoPlaceSetup(game, OPPONENT);
+    // North's setup comes from the selected difficulty tier (Normal:
+    // auto-placed; Hard: choke-point traps) — its traps stay hidden
+    // because displayTraps never includes them.
+    const result = chooseDifficultySetup(difficulty, game, OPPONENT);
     if (!result.ok) {
       setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
@@ -582,7 +590,8 @@ export default function LocalGamePage() {
   useEffect(() => {
     if (!cpuTurn) return;
     const timer = window.setTimeout(() => {
-      const action = chooseCpuAction(
+      const action = chooseDifficultyAction(
+        difficulty,
         sanitizeForPlayer(game, CPU_PLAYER),
         CPU_PLAYER,
       );
@@ -675,7 +684,7 @@ export default function LocalGamePage() {
       }
     }, CPU_STEP_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [game, cpuMode, playing, cpuTurn, playGameEndSound]);
+  }, [game, cpuMode, difficulty, playing, cpuTurn, playGameEndSound]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
@@ -743,6 +752,22 @@ export default function LocalGamePage() {
               className="accent-emerald-500"
             />
             🤖 CPU plays North
+          </label>
+        )}
+        {!playing && !finished && cpuMode && (
+          <label className="flex items-center gap-2 rounded-full bg-neutral-800 px-3 py-1.5 text-sm">
+            Difficulty
+            <select
+              value={difficulty}
+              onChange={(event) =>
+                setDifficulty(event.target.value as CpuDifficulty)
+              }
+              aria-label="CPU difficulty"
+              className="rounded-full bg-neutral-700 px-2 py-0.5 text-sm"
+            >
+              <option value="normal">Normal</option>
+              <option value="hard">Hard</option>
+            </select>
           </label>
         )}
       </div>
@@ -868,6 +893,11 @@ export default function LocalGamePage() {
             </span>
             <span className="text-neutral-500"> / {PIECES_TO_WIN}</span>
           </p>
+          {cpuMode && (
+            <p className="text-sm text-neutral-400">
+              CPU difficulty: {CPU_DIFFICULTIES[difficulty].label}
+            </p>
+          )}
 
           {finished ? (
             <>
