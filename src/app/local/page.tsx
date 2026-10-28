@@ -230,6 +230,9 @@ export default function LocalGamePage() {
         triggered: false,
       }));
     }
+    // The game is over: hidden information ends with it — every
+    // untriggered trap is revealed on the board (post-game reveal).
+    if (finished) return game.traps;
     // The viewer's own untriggered traps, every triggered trap (public
     // once fired), plus the opponent traps trap sense has revealed to
     // the viewer (POWERUPS_SPEC.md §6) — revealed ones stay visible for
@@ -242,14 +245,22 @@ export default function LocalGamePage() {
         t.triggered ||
         revealedKeys.has(tileKey(t.position)),
     );
-  }, [game.traps, game.revealedTraps, visibleOwner, southApplied, draftTraps]);
+  }, [game.traps, game.revealedTraps, visibleOwner, southApplied, draftTraps, finished]);
 
   // Which of the drawn traps are there *because* trap sense revealed
   // them to the viewer — Board labels those "Revealed trap".
-  const displayRevealedTrapKeys = useMemo(
-    () => new Set(game.revealedTraps[visibleOwner].map(tileKey)),
-    [game.revealedTraps, visibleOwner],
-  );
+  const displayRevealedTrapKeys = useMemo(() => {
+    // Post-game, the "revealed" set is the opponent's traps that were
+    // hidden all game — the board labels them as post-game reveals.
+    if (finished) {
+      return new Set(
+        game.traps
+          .filter((t) => t.owner !== visibleOwner && !t.triggered)
+          .map((t) => tileKey(t.position)),
+      );
+    }
+    return new Set(game.revealedTraps[visibleOwner].map(tileKey));
+  }, [game.revealedTraps, game.traps, visibleOwner, finished]);
 
   // Tiles the current mode may legally use light up. Computed by asking
   // the engine about every candidate tile — no placement rule is repeated
@@ -826,6 +837,8 @@ export default function LocalGamePage() {
         pieces={displayPieces}
         traps={displayTraps}
         revealedTrapKeys={displayRevealedTrapKeys}
+        nerfMarkers={game.nerfMarkers}
+        postGame={finished}
         mysteryBoxes={game.mysteryBoxes}
         highlighted={highlighted}
         dangerHighlighted={dangerHighlighted}
@@ -918,6 +931,22 @@ export default function LocalGamePage() {
                 {game.winner && game.scores[game.winner] >= PIECES_TO_WIN
                   ? `${PIECES_TO_WIN} pieces crossed the board — settled in ${turnCount} turns.`
                   : `Settled by attrition in ${turnCount} turns: the loser dropped below ${PIECES_TO_WIN} pieces still able to score.`}
+              </p>
+              <p className="max-w-md text-sm text-neutral-400">
+                Every hidden trap is now revealed on the board —{" "}
+                {playerLabel("north")} had{" "}
+                {
+                  game.traps.filter(
+                    (t) => t.owner === "north" && !t.triggered,
+                  ).length
+                }{" "}
+                that never fired, {playerLabel("south")} had{" "}
+                {
+                  game.traps.filter(
+                    (t) => t.owner === "south" && !t.triggered,
+                  ).length
+                }
+                .
               </p>
               <div className="flex flex-wrap justify-center gap-3 text-sm">
                 {(["north", "south"] as PlayerId[]).map((player) => (

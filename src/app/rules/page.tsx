@@ -182,6 +182,17 @@ export default function RulesPage() {
           </strong>{" "}
           to eliminate an enemy piece that&apos;s next to — orthogonally
           adjacent to — one of yours. No trap check, no moving required.
+          The tile where the nerf landed is marked with a ⚡ until your
+          next turn ends, so you can see exactly where you lost a piece.
+        </p>
+      </Section>
+
+      <Section title="After the game">
+        <p>
+          Once the game is over, hidden information ends with it: every
+          trap that never fired is revealed on the board, so you can see
+          what you walked past — and what your opponent never got to
+          use.
         </p>
       </Section>
 

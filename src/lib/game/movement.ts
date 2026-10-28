@@ -413,6 +413,10 @@ export function endTurn(
       movementPointsLeft: MOVEMENT_POINTS_PER_TURN,
       spentThisTurn: {},
       bonusPoints: {},
+      // The turn just completed belongs to `player`: any nerf markers
+      // on them expire now, while markers on the opponent (from this
+      // player's own nerfs) survive until the opponent's turn ends.
+      nerfMarkers: state.nerfMarkers.filter((m) => m.victim !== player),
       nerfTokens: {
         ...state.nerfTokens,
         [player]: Math.min(

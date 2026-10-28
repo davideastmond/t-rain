@@ -131,6 +131,12 @@ export function applyNerf(
         ...state.nerfTokens,
         [player]: state.nerfTokens[player] - 1,
       },
+      // Mark the tile until the victim's next turn ends (endTurn
+      // clears it) so the board shows where the nerf landed.
+      nerfMarkers: [
+        ...state.nerfMarkers,
+        { position: target.position, victim: target.owner },
+      ],
     },
     outcome: { eliminatedPieceId: targetPieceId, attritionLoss },
   };

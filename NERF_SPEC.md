@@ -115,6 +115,9 @@ decision than it is today.
   errors). Auto-disarms after use or when no valid target exists.
 - Narration: `⚡ South's nerf eliminates North's 🐸 Frog!` /
   attrition-loss variant.
+- The board marks the tile where the nerf landed with a ⚡ (tinted in
+  the victim's colour) until the victim's next turn ends — so the
+  victim sees, on their own turn, exactly where they lost a piece.
 
 ## 8. CPU hook (deferred)
 
