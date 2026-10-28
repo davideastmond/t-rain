@@ -58,6 +58,18 @@ interface BoardProps {
    * whose knowledge this is; Board just labels what it is handed.
    */
   revealedTrapKeys?: Set<string>;
+  /**
+   * Tiles where a piece was nerfed (⚡, top-left corner, tinted in the
+   * victim's colour). The engine clears each marker when the victim's
+   * next turn ends; Board just draws what it is handed.
+   */
+  nerfMarkers?: Array<{ position: Position; victim: "north" | "south" }>;
+  /**
+   * Post-game board: traps in `revealedTrapKeys` are hidden traps
+   * revealed only because the game ended, so they get the post-game
+   * title instead of the still-live one.
+   */
+  postGame?: boolean;
   /** Mystery boxes to draw (🎁 on uncollected ones). Boxes are public. */
   mysteryBoxes?: MysteryBox[];
   highlighted?: Set<string>;
@@ -76,6 +88,8 @@ export default function Board({
   pieces = [],
   traps = [],
   revealedTrapKeys,
+  nerfMarkers = [],
+  postGame = false,
   mysteryBoxes = [],
   highlighted,
   dangerHighlighted,
@@ -90,6 +104,17 @@ export default function Board({
   const trapByTile = new Map<number, Trap>();
   for (const trap of traps) {
     trapByTile.set(tileIndex(trap.position.x, trap.position.y), trap);
+  }
+  // Same for nerf markers. Two can overlap on one tile in the rare
+  // case where a piece re-occupies a marked tile and is itself nerfed
+  // before the first marker expires — the newest (last in the array)
+  // wins the single ⚡ slot.
+  const nerfMarkerByTile = new Map<number, "north" | "south">();
+  for (const marker of nerfMarkers) {
+    nerfMarkerByTile.set(
+      tileIndex(marker.position.x, marker.position.y),
+      marker.victim,
+    );
   }
   // Same for uncollected mystery boxes — collected ones disappear.
   const boxByTile = new Map<number, MysteryBox>();
@@ -122,6 +147,7 @@ export default function Board({
           const isDangerHighlighted =
             dangerHighlighted?.has(tileKey(tile.position)) ?? false;
           const trap = trapByTile.get(index);
+          const nerfVictim = nerfMarkerByTile.get(index);
           const box = boxByTile.get(index);
 
           return (
@@ -152,11 +178,22 @@ export default function Board({
                     trap.triggered
                       ? "Triggered trap"
                       : revealedTrapKeys?.has(tileKey(trap.position))
-                        ? "Revealed trap — still live!"
+                        ? postGame
+                          ? "Hidden trap — revealed after the game"
+                          : "Revealed trap — still live!"
                         : "Trap"
                   }
                 >
                   {trap.triggered ? "💥" : "💣"}
+                </span>
+              )}
+              {nerfVictim && (
+                <span
+                  className="absolute top-0 left-0 text-[14px] leading-none"
+                  style={{ color: PLAYER_COLORS[nerfVictim] }}
+                  title={`Piece nerfed here — clears when ${nerfVictim === "north" ? "North" : "South"}'s turn ends`}
+                >
+                  ⚡
                 </span>
               )}
               {box && (

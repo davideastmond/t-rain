@@ -61,6 +61,9 @@ A 2-player, turn-based race across a randomly generated board. Read the terrain,
 - Collection rolls the contents: **40% extra steps** (+2 free points for the collecting piece, this turn only, spent before pool points and exempt from the per-piece cap), **25% bridge** (the piece may cross one water tile at cost 1; it must reach land the same turn or it drowns, and a water tile never scores, even on the goal row), **25% trap sense** (the collecting piece senses the traps on the tiles N/S/E/W of it for the rest of the turn — on collection and after each of its steps; sensed traps are revealed to that player only, permanently, but stay live), **10% booby trap** (the collecting piece is eliminated). The box is consumed on any outcome.
 
 ## Winning and Losing
+- **Post-game trap reveal:** once the game is over, hidden information
+  ends with it — every untriggered trap is revealed on the board, with
+  a count per side of traps that never fired.
 - **First player to get 5 pieces across (onto the opponent's back row) wins.**
 - A player loses immediately if their pieces still on the board + pieces already across drop below 5 — they can no longer reach the win target (e.g. 15 pieces, 0 across, 11 eliminated = 4 remaining, game over).
 - A player with all pieces eliminated also loses (covered by the rule above).

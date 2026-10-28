@@ -88,6 +88,41 @@ describe("Board rendering", () => {
     expect(screen.getByTitle("Triggered trap").textContent).toContain("💥");
   });
 
+  it("labels post-game revealed traps differently from live ones", () => {
+    render(
+      <Board
+        tiles={tiles}
+        biome="grass"
+        piecesKey="test"
+        traps={[
+          { owner: "north", position: { x: 2, y: 2 }, triggered: false },
+          { owner: "south", position: { x: 7, y: 7 }, triggered: false },
+        ]}
+        revealedTrapKeys={new Set(["7,7"])}
+        postGame
+      />,
+    );
+    expect(screen.getByTitle("Trap").textContent).toContain("💣");
+    expect(
+      screen.getByTitle("Hidden trap — revealed after the game").textContent,
+    ).toContain("💣");
+  });
+
+  it("draws a nerf marker on the nerfed tile", () => {
+    render(
+      <Board
+        tiles={tiles}
+        biome="grass"
+        piecesKey="test"
+        nerfMarkers={[{ position: { x: 5, y: 5 }, victim: "south" }]}
+      />,
+    );
+    expect(
+      screen.getByTitle("Piece nerfed here — clears when South's turn ends")
+        .textContent,
+    ).toContain("⚡");
+  });
+
   it("draws uncollected boxes and hides collected ones", () => {
     render(
       <Board
