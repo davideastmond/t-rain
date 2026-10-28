@@ -365,6 +365,7 @@ export default function CpuBattlePage() {
             biome={game.biome}
             pieces={game.pieces}
             traps={game.traps}
+            nerfMarkers={game.nerfMarkers}
             mysteryBoxes={game.mysteryBoxes}
             piecesKey={gameId}
           />

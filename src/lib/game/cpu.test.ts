@@ -82,6 +82,23 @@ describe("sanitizeForPlayer", () => {
     // The opponent's revealed set is itself private.
     expect(view.revealedTraps).toEqual({ north: [{ x: 8, y: 8 }], south: [] });
   });
+
+  it("reveals every trap once the game is finished", () => {
+    const state = {
+      ...cpuGame([CAT(5, 5)]),
+      phase: "finished" as const,
+      traps: [
+        { owner: "north" as const, position: { x: 5, y: 6 }, triggered: false },
+        { owner: "south" as const, position: { x: 6, y: 6 }, triggered: false },
+      ],
+      revealedTraps: { north: [], south: [] },
+    };
+    const view = sanitizeForPlayer(state, "north");
+    expect(view.traps.map((t) => `${t.position.x},${t.position.y}`).sort()).toEqual([
+      "5,6",
+      "6,6",
+    ]);
+  });
 });
 
 describe("findPath", () => {
