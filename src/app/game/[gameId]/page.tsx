@@ -776,8 +776,21 @@ function GameClient() {
         pieces={displayPieces}
         traps={displayTraps}
         revealedTrapKeys={
-          seat ? new Set(netState.revealedTraps[seat].map(tileKey)) : undefined
+          seat
+            ? finished
+              ? // Post-game reveal: the opponent's traps that were
+                // hidden all game (the server stops filtering traps
+                // once the game is finished).
+                new Set(
+                  netState.traps
+                    .filter((t) => t.owner !== seat && !t.triggered)
+                    .map((t) => tileKey(t.position)),
+                )
+              : new Set(netState.revealedTraps[seat].map(tileKey))
+            : undefined
         }
+        nerfMarkers={netState.nerfMarkers}
+        postGame={finished}
         mysteryBoxes={netState.mysteryBoxes}
         highlighted={highlighted}
         dangerHighlighted={dangerHighlighted}
@@ -848,6 +861,22 @@ function GameClient() {
                   {netState.winner ? playerLabel(netState.winner) : ""}
                 </span>{" "}
                 wins the game!
+              </p>
+              <p className="max-w-md text-sm text-neutral-400">
+                Every hidden trap is now revealed on the board —{" "}
+                {playerLabel("north")} had{" "}
+                {
+                  netState.traps.filter(
+                    (t) => t.owner === "north" && !t.triggered,
+                  ).length
+                }{" "}
+                that never fired, {playerLabel("south")} had{" "}
+                {
+                  netState.traps.filter(
+                    (t) => t.owner === "south" && !t.triggered,
+                  ).length
+                }
+                .
               </p>
               <div className="flex flex-wrap justify-center gap-3 text-sm">
                 {(["north", "south"] as PlayerId[]).map((player) => (

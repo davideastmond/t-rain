@@ -187,6 +187,14 @@ export interface GameState {
    * for them) never carries what the other side has learned.
    */
   revealedTraps: Record<PlayerId, Position[]>;
+  /**
+   * Tiles where a piece was nerfed, marked until the victim's next turn
+   * ends: applyNerf records the tile and the victim, endTurn clears the
+   * markers belonging to the player ending their turn. The marker is
+   * public knowledge (the nerf itself is narrated), so sanitization
+   * keeps it.
+   */
+  nerfMarkers: Array<{ position: Position; victim: PlayerId }>;
 }
 
 /**

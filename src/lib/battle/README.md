@@ -1,19 +1,26 @@
 # Battle lab
 
-CPU-vs-CPU battles with full logging, for tuning the algo with data instead
-of vibes.
+Watch two computer players face each other, with every move recorded —
+so decisions about the CPU come from tournament results, not gut
+feeling.
 
 ## Pieces
 
-- `strategies.ts` — the registry. Every CPU the lab can field, each with a
-  stable `id` and a `version` that moves when its behavior changes
-  (`greedy@v1`, `pathfinder@v3`, `full@v4`, `seeker@v1`). The version is
-  what logs record, so tournaments stay comparable across algo tweaks.
-  `seeker` is a lab-only instrument (full + box detours) for measuring
-  box outcomes; the shipped CPU never seeks.
+- `strategies.ts` — the registry. Every CPU the lab can field, each with
+  a stable `id` and a `version` that changes whenever its behavior
+  changes (`greedy@v1`, `pathfinder@v3`, `full@v4`, `seeker@v1`). The
+  version is what logs record, so results from before a change never get
+  mixed up with results from after it. `seeker` is a lab-only instrument
+  (full + box detours) for measuring box outcomes; the shipped CPU never
+  seeks.
+- `setup-strategies.ts` — the setup registry. Same idea for how a side
+  places its pieces and traps: `auto` (random traps) and `choke`
+  (traps on the narrow crossings every route has to use). A difficulty
+  tier is a play strategy plus a setup strategy — to compare the shipped
+  tiers, field `hard` with `choke` against `full` with `auto`.
 - `log.ts` — the JSONL event schema (v1) and the `BattleLog` collector.
 - `runner.ts` — `runBattleGame(seed, southId, northId, opts)`: the real
-  engine (createGame → autoPlaceSetup → sanitize-choose-apply loop) driven
+  engine (createGame → setup → sanitize-choose-apply loop) driven
   headless, logging every action. Deterministic: same seed +
   `strategyRngSeed`, same game, on any machine.
 - `/cpu-battle` — the spectator page: watch one battle, or run a

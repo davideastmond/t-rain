@@ -47,6 +47,10 @@ import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./ty
  * This is the only state the CPU may decide from.
  */
 export function sanitizeForPlayer(state: GameState, player: PlayerId): GameState {
+  // The game is over: hidden information ends with it, and the
+  // post-game board reveals every trap (see the trap-reveal feature).
+  // No decisions happen from a finished view, so nothing can exploit it.
+  if (state.phase === "finished") return { ...state };
   const revealed = state.revealedTraps[player];
   return {
     ...state,

@@ -183,6 +183,7 @@ export function createGame(seed: number): GameState {
     bonusPoints: {},
     boxRolls: 0,
     revealedTraps: { north: [], south: [] },
+    nerfMarkers: [],
   };
 }
 

@@ -30,20 +30,25 @@ describe("POST step happy path", () => {
     const seat = state.currentPlayer as "south" | "north";
     const token = seat === "south" ? game.southToken : game.northToken;
     const piece = state.pieces.find(
-      (p: Piece) => p.owner === seat && p.status === "active",
+      (p: Piece) =>
+        p.owner === seat &&
+        p.status === "active" &&
+        legalStepTargets(state, p.id).length > 0,
     );
-    const targets = legalStepTargets(state, piece.id);
+    expect(piece).toBeDefined();
+    const pieceId = piece!.id;
+    const targets = legalStepTargets(state, pieceId);
     expect(targets.length).toBeGreaterThan(0);
     const to = targets[0];
     const res = await POST(
-      postRequest(stepUrl(game.gameId, token), { pieceId: piece.id, to }),
+      postRequest(stepUrl(game.gameId, token), { pieceId, to }),
       paramsFor(game.gameId),
     );
     expect(res.status).toBe(200);
     const body = await jsonOf(res);
     expect(body.ok).toBe(true);
     expect(body.events[0].type).toBe("step");
-    expect(body.events[0].pieceId).toBe(piece.id);
+    expect(body.events[0].pieceId).toBe(pieceId);
     expect(body.outcome.cost).toBeGreaterThan(0);
     expect(body.state.movementPointsLeft).toBe(10 - body.outcome.cost);
     // The stored state agrees with the response.

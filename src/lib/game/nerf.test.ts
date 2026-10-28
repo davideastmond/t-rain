@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { endTurn } from "./movement";
 import { applyNerf, canNerf, nerfTargets } from "./nerf";
 import { addTrap, movePieceTo, scenarioGame } from "./test-helpers";
 
@@ -184,5 +185,56 @@ describe("applyNerf", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.outcome.eliminatedPieceId).toBe("south-cat");
+  });
+});
+
+describe("nerfMarkers", () => {
+  it("marks the target tile with the victim, accumulating across nerfs", () => {
+    const state = {
+      ...movePieceTo(nerfState(), "south-dog", { x: 11, y: 10 }),
+      nerfTokens: { north: 2, south: 0 },
+    };
+    const first = applyNerf(state, "north", "south-cat");
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.state.nerfMarkers).toEqual([
+      { position: { x: 10, y: 11 }, victim: "south" },
+    ]);
+    const second = applyNerf(first.state, "north", "south-dog");
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.state.nerfMarkers).toEqual([
+      { position: { x: 10, y: 11 }, victim: "south" },
+      { position: { x: 11, y: 10 }, victim: "south" },
+    ]);
+    // Pure: the input state is untouched.
+    expect(state.nerfMarkers).toEqual([]);
+  });
+
+  it("clears only the ending player's markers at endTurn", () => {
+    const marked = {
+      ...scenarioGame(),
+      nerfMarkers: [
+        { position: { x: 10, y: 11 }, victim: "south" as const },
+        { position: { x: 5, y: 5 }, victim: "north" as const },
+      ],
+    };
+    // North ends their turn: the north-victim marker (from South's
+    // own nerf) clears, while the south-victim marker survives into
+    // South's turn.
+    const afterNorth = endTurn({ ...marked, currentPlayer: "north" });
+    expect(afterNorth.ok).toBe(true);
+    if (!afterNorth.ok) return;
+    expect(afterNorth.state.nerfMarkers).toEqual([
+      { position: { x: 10, y: 11 }, victim: "south" },
+    ]);
+    // South ends their turn: the remaining marker clears.
+    const afterSouth = endTurn({
+      ...afterNorth.state,
+      currentPlayer: "south",
+    });
+    expect(afterSouth.ok).toBe(true);
+    if (!afterSouth.ok) return;
+    expect(afterSouth.state.nerfMarkers).toEqual([]);
   });
 });
