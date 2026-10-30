@@ -132,6 +132,11 @@ describe("Board rendering", () => {
       />,
     );
     expect(board().classList.contains("animate-board-shake")).toBe(true);
+    // The shaking layer sits inside a clip boundary, so the ±5px
+    // tremble cannot widen the scroller and pop a scrollbar in.
+    expect(
+      board().parentElement!.classList.contains("overflow-x-clip"),
+    ).toBe(true);
   });
 
   it("does not shake on mount when traps are already triggered", () => {
