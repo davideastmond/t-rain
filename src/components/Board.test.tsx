@@ -88,6 +88,74 @@ describe("Board rendering", () => {
     expect(screen.getByTitle("Triggered trap").textContent).toContain("💥");
   });
 
+  it("shakes when a trap fires, but not when one is merely revealed", () => {
+    const traps = [
+      { owner: "south" as const, position: { x: 7, y: 7 }, triggered: false },
+    ];
+    const board = () =>
+      screen.getByRole("img", { name: /T-rain board/ }).parentElement!;
+    const { rerender } = render(
+      <Board tiles={tiles} biome="grass" piecesKey="test" traps={traps} />,
+    );
+    expect(board().classList.contains("animate-board-shake")).toBe(false);
+    // A new untriggered trap appearing (e.g. the post-game reveal) is
+    // not a firing — no shake.
+    rerender(
+      <Board
+        tiles={tiles}
+        biome="grass"
+        piecesKey="test"
+        traps={[
+          ...traps,
+          {
+            owner: "north" as const,
+            position: { x: 2, y: 2 },
+            triggered: false,
+          },
+        ]}
+      />,
+    );
+    expect(board().classList.contains("animate-board-shake")).toBe(false);
+    // The trap firing shakes the board.
+    rerender(
+      <Board
+        tiles={tiles}
+        biome="grass"
+        piecesKey="test"
+        traps={[
+          {
+            owner: "south" as const,
+            position: { x: 7, y: 7 },
+            triggered: true,
+          },
+        ]}
+      />,
+    );
+    expect(board().classList.contains("animate-board-shake")).toBe(true);
+  });
+
+  it("does not shake on mount when traps are already triggered", () => {
+    render(
+      <Board
+        tiles={tiles}
+        biome="grass"
+        piecesKey="test"
+        traps={[
+          {
+            owner: "south" as const,
+            position: { x: 7, y: 7 },
+            triggered: true,
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("img", { name: /T-rain board/ })
+        .parentElement!.classList.contains("animate-board-shake"),
+    ).toBe(false);
+  });
+
   it("labels post-game revealed traps differently from live ones", () => {
     render(
       <Board

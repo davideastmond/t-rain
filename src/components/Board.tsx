@@ -1,3 +1,5 @@
+"use client";
+
 // The board: terrain squares with pieces and traps drawn on top.
 //
 // The colored-squares style lives here: one <div> per tile in a CSS grid,
@@ -24,6 +26,16 @@
 //
 // `highlighted` holds tile keys ("x,y") to outline — the page uses it to
 // show where the currently selected thing may legally go.
+//
+// When a trap fires, the whole board trembles: Board watches the traps
+// it is handed and shakes whenever a new tile joins the triggered set.
+// That keeps the effect in one place — local, online, and spectator
+// boards all shake, including traps hit on CPU turns, with no page
+// changes. Loading a mid-game board never shakes (the first render
+// only records the set), and post-game reveals never shake either
+// (revealing a trap does not mark it triggered).
+
+import { useEffect, useRef, useState } from "react";
 
 import { tileIndex } from "@/lib/game/board";
 import {
@@ -116,6 +128,30 @@ export default function Board({
       marker.victim,
     );
   }
+  // Tremble when a trap fires: compare this render's triggered set
+  // with the previous one, and shake on any new entry. The first
+  // render only records the set — a board that loads mid-game, with
+  // traps already triggered, must not shake on arrival.
+  const prevTriggeredRef = useRef<Set<string> | null>(null);
+  const [shaking, setShaking] = useState(false);
+  useEffect(() => {
+    const triggered = new Set(
+      traps.filter((t) => t.triggered).map((t) => tileKey(t.position)),
+    );
+    if (prevTriggeredRef.current === null) {
+      prevTriggeredRef.current = triggered;
+      return;
+    }
+    const prev = prevTriggeredRef.current;
+    prevTriggeredRef.current = triggered;
+    if ([...triggered].some((key) => !prev.has(key))) setShaking(true);
+  }, [traps]);
+  useEffect(() => {
+    if (!shaking) return;
+    const timer = setTimeout(() => setShaking(false), 500);
+    return () => clearTimeout(timer);
+  }, [shaking]);
+
   // Same for uncollected mystery boxes — collected ones disappear.
   const boxByTile = new Map<number, MysteryBox>();
   for (const box of mysteryBoxes) {
@@ -131,7 +167,9 @@ export default function Board({
     // sideways. On desktop the page column (~1024px) is wider than the
     // minimum, so nothing changes there — the board still fills it.
     <div className="w-full overflow-x-auto">
-      <div className="relative min-w-[760px]">
+      <div
+        className={`relative min-w-[760px]${shaking ? " animate-board-shake" : ""}`}
+      >
       <div
         className="grid w-full gap-px rounded-lg bg-black/50 p-1"
         style={{
