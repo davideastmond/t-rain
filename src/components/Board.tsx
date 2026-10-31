@@ -167,8 +167,14 @@ export default function Board({
     // sideways. On desktop the page column (~1024px) is wider than the
     // minimum, so nothing changes there — the board still fills it.
     <div className="w-full overflow-x-auto">
+      {/* The clip boundary sits between the scroller and the shaking
+          layer, and itself never moves: the ±5px tremble overshoot is
+          clipped here instead of widening the scroller and popping a
+          scrollbar in mid-shake. The piece overlay lives inside the
+          shaking layer so pieces tremble with their tiles. */}
+      <div className="relative min-w-[760px] overflow-x-clip">
       <div
-        className={`relative min-w-[760px]${shaking ? " animate-board-shake" : ""}`}
+        className={`relative${shaking ? " animate-board-shake" : ""}`}
       >
       <div
         className="grid w-full gap-px rounded-lg bg-black/50 p-1"
@@ -296,6 +302,7 @@ export default function Board({
             </span>
           </div>
         ))}
+      </div>
       </div>
       </div>
     </div>
