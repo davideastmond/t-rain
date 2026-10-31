@@ -60,6 +60,11 @@ A 2-player, turn-based race across a randomly generated board. Read the terrain,
 - A box can only be collected by the player whose zone it is **not** in, by stepping onto its tile. For the home player it is inert. Each player can collect at most one box per game.
 - Collection rolls the contents: **40% extra steps** (+2 free points for the collecting piece, this turn only, spent before pool points and exempt from the per-piece cap), **25% bridge** (the piece may cross one water tile at cost 1; it must reach land the same turn or it drowns, and a water tile never scores, even on the goal row), **25% trap sense** (the collecting piece senses the traps on the tiles N/S/E/W of it for the rest of the turn — on collection and after each of its steps; sensed traps are revealed to that player only, permanently, but stay live), **10% booby trap** (the collecting piece is eliminated). The box is consumed on any outcome.
 
+## Pickup Powers (see PICKUP_POWERS_SPEC.md)
+- **1 per game**, randomly an extra **trap** or a **terraform** (one water or forest tile becomes plains). Invisible until collected — never drawn on the board, hidden from both players' views — and **not mirrored**: either half is equally likely to hold it, and some games nobody finds it.
+- Placed when the game flips from setup to playing (never by the seeded board generation), on a land tile in rows 3–14 or 16–27, never under a piece, a trap, or a box.
+- Stepping onto it collects it; the power must be used **the same turn** for **3 pool points**, or it expires at `endTurn`. Targeting is anywhere: the trap goes on any unoccupied, trap-free, box-free tile (water allowed, fires on bridged entry); terraform works on any water or forest tile, permanently. Trap sense does not reveal pickups; an unclaimed pickup is listed in the post-game recap.
+
 ## Winning and Losing
 - **Post-game trap reveal:** once the game is over, hidden information
   ends with it — every untriggered trap is revealed on the board, with

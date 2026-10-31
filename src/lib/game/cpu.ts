@@ -67,6 +67,14 @@ export function sanitizeForPlayer(state: GameState, player: PlayerId): GameState
       north: player === "north" ? revealed : [],
       south: player === "south" ? revealed : [],
     },
+    // Uncollected pickups are invisible to everyone; held powers are
+    // private like revealed traps (the finished-game path above already
+    // returns the full state, so post-game reveals still work).
+    pickups: [],
+    heldPowers: {
+      north: player === "north" ? state.heldPowers.north : [],
+      south: player === "south" ? state.heldPowers.south : [],
+    },
   };
 }
 

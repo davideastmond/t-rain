@@ -64,6 +64,12 @@ export const NERF_TOKEN_CAP = 2;
 /** Movement points a nerf costs from the shared pool, on top of 1 token. */
 export const NERF_POOL_COST = 3;
 
+/**
+ * Movement points using a pickup power costs from the shared pool, for
+ * either kind (trap placement or terraform). See PICKUP_POWERS_SPEC.md.
+ */
+export const PICKUP_POWER_COST = 3;
+
 // --- Mystery boxes ----------------------------------------------------------
 
 /** Boxes per game: one mirrored pair, one in each player's zone. */
