@@ -46,6 +46,16 @@ describe("Board rendering", () => {
     expect(grid.children.length).toBe(930);
   });
 
+  it("paints each tile with its biome texture", () => {
+    const water = tiles.find((t) => t.terrain === "water")!;
+    render(<Board tiles={tiles} biome="grass" piecesKey="test" />);
+    const tile = screen.getByTitle(
+      `Water (${water.position.x}, ${water.position.y})`,
+    );
+    expect(tile.style.backgroundImage).toContain("data:image/svg+xml");
+    expect(tile.style.backgroundSize).toBe("24px 24px");
+  });
+
   it("draws active pieces by character and hides eliminated ones", () => {
     render(
       <Board
