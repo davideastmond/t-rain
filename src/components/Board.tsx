@@ -205,6 +205,8 @@ export default function Board({
               }`}
               style={{
                 backgroundColor: palette.colors[tile.terrain],
+                backgroundImage: palette.textures[tile.terrain],
+                backgroundSize: "24px 24px",
                 boxShadow: isDangerHighlighted
                   ? "inset 0 0 0 2px rgba(239, 68, 68, 0.9)"
                   : isHighlighted
