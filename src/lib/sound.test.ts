@@ -25,6 +25,7 @@ function outcome(patch: Partial<StepOutcome>): StepOutcome {
     scored: false,
     box: null,
     revealed: [],
+    pickup: null,
     ...patch,
   };
 }
