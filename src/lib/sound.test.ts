@@ -261,6 +261,7 @@ describe("playSound safety and mute", () => {
   it("no-ops safely without an audio context", () => {
     expect(() => playSound("move")).not.toThrow();
     expect(() => playSound("win", true)).not.toThrow();
+    expect(() => playSound("terraform")).not.toThrow();
   });
 
   it("persists the mute flag in localStorage", () => {

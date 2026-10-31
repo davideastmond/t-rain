@@ -49,12 +49,14 @@ import {
   NERF_POOL_COST,
   NERF_TOKEN_CAP,
   NEUTRAL_ROW,
+  PICKUP_POWER_COST,
   PIECES_PER_PLAYER,
   PIECES_TO_WIN,
   TRAPS_PER_PLAYER,
 } from "@/lib/game/constants";
 import {
   playerLabel,
+  PICKUP_POWER_ERROR_MESSAGES,
   SETUP_ERROR_MESSAGES,
   NERF_ERROR_MESSAGES,
   MOVE_ERROR_MESSAGES as SHARED_MOVE_ERROR_MESSAGES,
@@ -70,6 +72,11 @@ import {
 } from "@/lib/game/movement";
 import { applyNerf, nerfTargets } from "@/lib/game/nerf";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
+import {
+  applyPickupTrap,
+  applyTerraform,
+  placePickup,
+} from "@/lib/game/pickups";
 import {
   isMuted,
   playSound,
@@ -92,6 +99,8 @@ import {
   type CharacterId,
   type GameState,
   type MysteryBoxOutcome,
+  type Pickup,
+  type PickupPowerKind,
   type Piece,
   type PlayerId,
   type Position,
@@ -142,6 +151,26 @@ function revealNote(revealed: Position[]): string {
   return ` 🔍 Trap sense revealed ${revealed.length} traps — they're still live!`;
 }
 
+/** Plain words for a pickup power kind, for messages and the recap. */
+function pickupPowerLabel(kind: PickupPowerKind): string {
+  return kind === "trap" ? "extra trap" : "terraform";
+}
+
+/** Narration for a pickup power collection (collector only online; the
+    local banner is shared-screen, so hotseat players see it too). */
+function pickupMessage(who: string, kind: PickupPowerKind): string {
+  return kind === "trap"
+    ? `✨ ${who} found a pickup power: an extra trap! Place it anywhere this turn (${PICKUP_POWER_COST} pts).`
+    : `✨ ${who} found a pickup power: terraform! Turn a water or forest tile into plains this turn (${PICKUP_POWER_COST} pts).`;
+}
+
+/** Post-game recap line for an unclaimed pickup, if one remains. */
+function unclaimedPickupNote(pickups: Pickup[]): string | null {
+  if (pickups.length === 0) return null;
+  const [pickup] = pickups;
+  return `An unclaimed ${pickupPowerLabel(pickup.kind)} pickup sat at (${pickup.position.x}, ${pickup.position.y}).`;
+}
+
 export default function LocalGamePage() {
   const [seedText, setSeedText] = useState(String(FIRST_SEED));
   const [game, setGame] = useState<GameState>(() => createGame(FIRST_SEED));
@@ -156,6 +185,7 @@ export default function LocalGamePage() {
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   /** Nerf targeting mode: red highlights, clicks execute nerfs. */
   const [nerfArmed, setNerfArmed] = useState(false);
+  const [powerArmed, setPowerArmed] = useState<PickupPowerKind | null>(null);
   const [turnCount, setTurnCount] = useState(0);
   // Bumps on every new game so piece markers remount instead of animating
   // from the previous game's positions.
@@ -331,6 +361,7 @@ export default function LocalGamePage() {
     setSelectedCharacter("cat");
     setMode("pieces");
     setNerfArmed(false);
+    setPowerArmed(null);
     setMessage(null);
     setSelectedPieceId(null);
     setTurnCount(0);
@@ -438,7 +469,11 @@ export default function LocalGamePage() {
       setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
     }
-    setGame(result.state);
+    // The setup→playing flip is when the pickup is placed: only now is
+    // the trap/box layout final, so exclusions can be checked. A failed
+    // placement (essentially impossible) just means no pickup this game.
+    const placed = placePickup(result.state, Math.random);
+    setGame(placed.state);
     playSound("start");
     setMessage(
       `${playerLabel(result.state.currentPlayer)} moves first — click one of their pieces, then a glowing tile to step.`,
@@ -463,8 +498,33 @@ export default function LocalGamePage() {
       return;
     }
     setSelectedPieceId(null);
+    setPowerArmed(null);
     setNerfArmed(true);
     setMessage("⚡ Nerf armed — tap a red-highlighted enemy piece.");
+  }
+
+  /** Arm/disarm a held pickup power's targeting mode. Like nerf, but
+      with no board highlight: anywhere-targeting would light up most
+      of the board, so the banner explains and clicks are validated
+      with messages instead. */
+  function togglePower(kind: PickupPowerKind) {
+    if (powerArmed === kind) {
+      setPowerArmed(null);
+      setMessage(null);
+      return;
+    }
+    if (!game.heldPowers[game.currentPlayer].includes(kind)) {
+      setMessage("You don't hold that power right now.");
+      return;
+    }
+    setSelectedPieceId(null);
+    setNerfArmed(false);
+    setPowerArmed(kind);
+    setMessage(
+      kind === "trap"
+        ? "💣 Extra trap armed — tap any tile to place it (3 pts). It stays hidden until something steps on it."
+        : "🌍 Terraform armed — tap a water or forest tile to turn it into plains (3 pts).",
+    );
   }
 
   function handlePlayClick(position: Position) {
@@ -494,6 +554,33 @@ export default function LocalGamePage() {
         result.state.phase === "finished"
           ? `⚡ ${playerLabel(game.currentPlayer)}'s nerf eliminates ${who} — and that ends the game!`
           : `⚡ ${playerLabel(game.currentPlayer)}'s nerf eliminates ${who}!`,
+      );
+      return;
+    }
+
+    // Pickup power targeting mode: every click is a use attempt on the
+    // tile under the cursor (or an invalid-target error when the tile
+    // can't take it). A placed trap stays hidden; a terraform is
+    // visible on the board itself.
+    if (powerArmed) {
+      const result =
+        powerArmed === "trap"
+          ? applyPickupTrap(game, game.currentPlayer, position)
+          : applyTerraform(game, game.currentPlayer, position);
+      if (!result.ok) {
+        setMessage(PICKUP_POWER_ERROR_MESSAGES[result.error]);
+        playSound("invalid");
+        return;
+      }
+      setGame(result.state);
+      playSound(powerArmed === "trap" ? "place" : "terraform");
+      playGameEndSound(result.state);
+      setPowerArmed(null);
+      setSelectedPieceId(null);
+      setMessage(
+        powerArmed === "trap"
+          ? `💣 ${playerLabel(game.currentPlayer)} placed an extra trap!`
+          : `🌍 ${playerLabel(game.currentPlayer)} terraformed (${position.x}, ${position.y}) into plains!`,
       );
       return;
     }
@@ -553,6 +640,14 @@ export default function LocalGamePage() {
       );
     } else if (result.outcome.box) {
       setMessage(boxMessage(who, result.outcome.box) + revealNote(result.outcome.revealed));
+    } else if (result.outcome.pickup) {
+      // Collection can't coincide with a trap, a box, or scoring (the
+      // placement exclusions), but it can coincide with trap-sense
+      // reveals on the same step — so the note rides along.
+      setMessage(
+        pickupMessage(who, result.outcome.pickup) +
+          revealNote(result.outcome.revealed),
+      );
     } else if (result.outcome.revealed.length > 0) {
       setMessage(revealNote(result.outcome.revealed).trim());
     } else {
@@ -563,9 +658,17 @@ export default function LocalGamePage() {
   function handleEndTurn() {
     const result = endTurn(game);
     if (!result.ok) return;
+    // A held power expires with the turn that collected it. The note
+    // stays silent for a CPU turn — the CPU's held powers are its
+    // private knowledge, like its trap-sense reveals.
+    const expiredPowers = game.heldPowers[game.currentPlayer];
+    const showExpiry =
+      expiredPowers.length > 0 &&
+      !(cpuMode && game.currentPlayer === CPU_PLAYER);
     setGame(result.state);
     setSelectedPieceId(null);
     setNerfArmed(false);
+    setPowerArmed(null);
     setTurnCount((count) => count + 1);
     const drowned = findDrownedPiece(game, result.state);
     if (drowned) playSound("drown");
@@ -580,7 +683,10 @@ export default function LocalGamePage() {
       return;
     }
     setMessage(
-      `${playerLabel(result.state.currentPlayer)}'s turn — ${MOVEMENT_POINTS_PER_TURN} fresh movement points.`,
+      `${playerLabel(result.state.currentPlayer)}'s turn — ${MOVEMENT_POINTS_PER_TURN} fresh movement points.` +
+        (showExpiry
+          ? ` ${playerLabel(game.currentPlayer)}'s ${pickupPowerLabel(expiredPowers[0])} expired unused.`
+          : ""),
     );
   }
 
@@ -948,6 +1054,11 @@ export default function LocalGamePage() {
                 }
                 .
               </p>
+              {game.pickups.length > 0 && (
+                <p className="max-w-md text-sm text-neutral-400">
+                  {unclaimedPickupNote(game.pickups)}
+                </p>
+              )}
               <div className="flex flex-wrap justify-center gap-3 text-sm">
                 {(["north", "south"] as PlayerId[]).map((player) => (
                   <div
@@ -1052,6 +1163,31 @@ export default function LocalGamePage() {
                     </span>
                   </>
                 )}
+                {!cpuTurn &&
+                  game.heldPowers[game.currentPlayer].length > 0 && (
+                    <>
+                      {" "}·{" "}
+                      <span className="font-semibold text-amber-300">
+                        {game.heldPowers[game.currentPlayer]
+                          .map((kind) =>
+                            kind === "trap"
+                              ? "💣 extra trap held — use it this turn (3 pts)"
+                              : "🌍 terraform held — use it this turn (3 pts)",
+                          )
+                          .join(" · ")}
+                      </span>
+                    </>
+                  )}
+                {powerArmed && (
+                  <>
+                    {" "}·{" "}
+                    <span className="font-semibold text-amber-300">
+                      {powerArmed === "trap"
+                        ? "extra trap targeting — tap any tile"
+                        : "terraform targeting — tap a water or forest tile"}
+                    </span>
+                  </>
+                )}
               </p>
               {cpuTurn ? (
                 <p className="animate-pulse text-sm text-neutral-300">
@@ -1081,6 +1217,42 @@ export default function LocalGamePage() {
                   >
                     {nerfArmed ? "⚡ Cancel nerf" : "⚡ Nerf"}
                   </button>
+                  {game.heldPowers[game.currentPlayer].includes("trap") && (
+                    <button
+                      type="button"
+                      onClick={() => togglePower("trap")}
+                      disabled={
+                        game.movementPointsLeft < PICKUP_POWER_COST
+                      }
+                      className={`rounded-full px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        powerArmed === "trap"
+                          ? "bg-amber-600 text-white hover:bg-amber-500"
+                          : "bg-neutral-800 hover:bg-neutral-700"
+                      }`}
+                    >
+                      {powerArmed === "trap"
+                        ? "💣 Cancel trap"
+                        : "💣 Place extra trap"}
+                    </button>
+                  )}
+                  {game.heldPowers[game.currentPlayer].includes("terraform") && (
+                    <button
+                      type="button"
+                      onClick={() => togglePower("terraform")}
+                      disabled={
+                        game.movementPointsLeft < PICKUP_POWER_COST
+                      }
+                      className={`rounded-full px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        powerArmed === "terraform"
+                          ? "bg-amber-600 text-white hover:bg-amber-500"
+                          : "bg-neutral-800 hover:bg-neutral-700"
+                      }`}
+                    >
+                      {powerArmed === "terraform"
+                        ? "🌍 Cancel terraform"
+                        : "🌍 Terraform"}
+                    </button>
+                  )}
                 </div>
               )}
               <p className="max-w-md text-xs text-neutral-500">
