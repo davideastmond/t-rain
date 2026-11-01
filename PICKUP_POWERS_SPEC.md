@@ -223,21 +223,38 @@ same-turn-only plus a pool cost.
 ## 13. CPU hook
 
 - The CPU cannot see pickups (sanitized view), so it finds them by
-  luck, like a human. When it holds a power, it must use it before
-  racing — an expiring power is the most urgent thing on the board.
-- Bomb heuristic: place on a tile of the enemy best runner's current
-  cheapest path, a few steps ahead of the runner. The opponent routes
-  through hidden traps, so it fires; own pieces never trigger own
-  traps, so the placement is never negative value — the CPU always
-  uses a held trap power when it can afford it.
+  luck, like a human. When it holds a power, it uses it before moving
+  — but after the nerf: a certain elimination still outranks a
+  speculative trap. The check runs every tick, so a power collected
+  mid-turn is used on the next tick while the pool still covers it.
+- Trap heuristic: place on a tile of the enemy best runner's current
+  cheapest path, three steps ahead of the runner, scanning outward for
+  the first legal tile and falling back to the nearest legal tile to
+  the path. The enemy's path is predicted from a trap-blind view: the
+  enemy does not know our hidden traps, so routing it around them (as
+  the raw view would) predicts a detour it will never take. The
+  opponent routes through hidden traps, so it fires; own pieces never
+  trigger own traps, so the placement is never negative value — the
+  CPU always uses a held trap power when it can afford it.
 - Terraform heuristic: use only when it helps the CPU's own route
   (route-cost saving > 0), else let it expire — terraforming an enemy
   route tile would help the enemy, which is worse than nothing. The
-  candidate set is bounded (water tiles first; forest savings are
-  1/step and rarely worth 3 pool), with the exact threshold left to
-  implementation tuning.
-- Battle-lab strategies share the same power-use code, so tournaments
-  include powers fairly on both sides.
+  check compares the runner's real cheapest route against an optimistic
+  one where water/forest cost 1, then verifies each water/forest tile
+  on the optimistic path by recomputing the real route with just that
+  tile terraformed; the biggest verified saving wins.
+- Both shipped tiers (`full` and `hard`, now v5) share the same power
+  use code: `choosePickupPowerAction`, checked after the nerf branch in
+  both choosers. Hard bypasses lookahead for it — lookahead scores a
+  hidden trap at ~zero, so as a candidate it would never win.
+- Local page: a CPU trap placement is silent (no message, no sound —
+  like a setup trap); a CPU terraform is narrated with the terraform
+  sound, since the tile visibly changes. CPU collection stays
+  unnarrated, as in phase 2.
+- Battle lab: the strategies already share the use code, but lab games
+  place no pickups yet (`createBattle` does not call `placePickup`),
+  so tournaments are unaffected until the battle-log phase wires
+  placement and log events together.
 
 ## 14. Test plan (for the implementation PRs)
 

@@ -756,6 +756,32 @@ export default function LocalGamePage() {
         );
         return;
       }
+      if (action.kind === "use-pickup") {
+        const result =
+          action.power === "trap"
+            ? applyPickupTrap(game, CPU_PLAYER, action.position)
+            : applyTerraform(game, CPU_PLAYER, action.position);
+        if (!result.ok) {
+          const done = endTurn(game);
+          if (done.ok) {
+            setGame(done.state);
+            setTurnCount((count) => count + 1);
+          }
+          return;
+        }
+        setGame(result.state);
+        setSelectedPieceId(null);
+        if (action.power === "terraform") {
+          // Public board state: the tile visibly changes, so say so.
+          playSound("terraform");
+          setMessage(
+            `🌍 North terraformed (${action.position.x}, ${action.position.y}) into plains!`,
+          );
+        }
+        // A trap placement is silent: no message, no sound — like a setup
+        // trap, the human learns nothing until something steps on it.
+        return;
+      }
       const result = movePieceStep(game, action.pieceId, action.to);
       if (!result.ok) {
         const done = endTurn(game);
