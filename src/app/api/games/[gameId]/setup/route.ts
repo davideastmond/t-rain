@@ -10,6 +10,7 @@
 // loses.
 
 import { CHARACTERS } from "@/lib/game/constants";
+import { placePickup } from "@/lib/game/pickups";
 import { applySetup } from "@/lib/game/setup";
 import type { CharacterId, Position } from "@/lib/game/types";
 import { authenticateGameRequest } from "@/lib/net/auth";
@@ -111,15 +112,24 @@ export async function POST(
     );
   }
 
+  // The second submission flips the game to playing — that is when the
+  // pickup is placed (only now is the trap/box layout final). No feed
+  // event: a placement event would leak the pickup's position and kind
+  // to both seats; it lives in the server state only.
+  let state = result.state;
+  if (state.phase === "playing") {
+    state = placePickup(state, Math.random).state;
+  }
+
   const events = appendEvent(record, { type: "setup-submitted", player: seat });
-  const updated: GameRecord = { ...record, state: result.state, events };
+  const updated: GameRecord = { ...record, state, events };
   if (!(await store.save(updated, record.version))) {
     return Response.json({ error: "version-conflict" }, { status: 409 });
   }
   return Response.json({
     ok: true,
     version: record.version + 1,
-    state: sanitizeForNetPlayer(result.state, seat),
+    state: sanitizeForNetPlayer(state, seat),
     events: events.slice(events.length - 1),
   });
 }

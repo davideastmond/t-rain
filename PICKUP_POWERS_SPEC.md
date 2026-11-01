@@ -188,12 +188,19 @@ same-turn-only plus a pool cost.
   check, events): `POST /api/games/[gameId]/pickup-trap` and
   `POST /api/games/[gameId]/pickup-terraform`.
 - Log schema stays v1 (additive event types; old logs replay with
-  `pickups: []`):
-  - `pickup_place` at the setup→playing transition (position, kind) —
-    this is what keeps replays exact despite seed-independent placement.
-  - `pickup_collect` inside the collecting move event's consequences
-    (like box collection).
-  - `pickup_use` for each power (kind, target, pool left).
+  `pickups: []`). But note the two logs are different things:
+  - The **battle log** records `pickup_place` at the setup→playing
+    transition (position, kind) — this is what keeps replays exact
+    despite seed-independent placement — plus `pickup_collect` and
+    `pickup_use` events.
+  - The **player feed** (the per-game event log both seats poll) must
+    NEVER carry placement or collection: a placement event would leak
+    the pickup's position and kind to the opponent, and a collection
+    event would tell them a power was found. So online collection and
+    trap placement have no feed events at all — the acting player
+    narrates from their action response. Terraform is the exception:
+    the tile itself changes on the shared board, so `terraformed`
+    (player, position) is a public feed event both seats narrate.
 - The state route already serves sanitized views, so online pickups
   stay hidden with no new plumbing; the finished-game path already
   returns the full state, so the post-game recap can read it.
