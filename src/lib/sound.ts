@@ -32,6 +32,7 @@ export type SoundName =
   | "place"
   | "start"
   | "bonus"
+  | "terraform"
   | "bridge";
 
 const MUTE_KEY = "train-muted";
@@ -426,6 +427,19 @@ export function playSound(name: SoundName, soft = false): void {
           from: 330,
           to: 330,
           dur: 0.2,
+          vol: 0.16,
+          scale,
+        });
+        break;
+      case "terraform":
+        // Earthy rumble: a low noise wash plus a descending tone —
+        // distinct from the bridge's single clean thud.
+        noise(ac, 0.25, 0.2, 400, scale);
+        tone(ac, {
+          type: "triangle",
+          from: 180,
+          to: 90,
+          dur: 0.25,
           vol: 0.16,
           scale,
         });
