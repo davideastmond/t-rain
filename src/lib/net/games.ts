@@ -7,6 +7,7 @@
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 
 import { sanitizeForPlayer } from "@/lib/game/cpu";
+import { placePickup } from "@/lib/game/pickups";
 import { autoPlaceSetup, createGame } from "@/lib/game/setup";
 import type {
   GameState,
@@ -130,6 +131,7 @@ export type NewEvent =
       pieceId: string;
       outcome: MysteryBoxOutcome;
     }
+  | { type: "terraformed"; player: PlayerId; position: Position }
   | { type: "piece-drowned"; player: PlayerId; pieceId: string }
   | {
       type: "game-finished";
@@ -157,8 +159,10 @@ export function appendEvent(record: GameRecord, event: NewEvent): NetEvent[] {
 /**
  * Resolve an expired setup clock: any seat that never submitted gets the
  * deterministic auto-placement, exactly as if they had timed out in the
- * local game. Pure function of the record and the wall clock — safe to
- * call from any route (polls included), idempotent once applied.
+ * local game. If the auto-placement flips the game to playing, the
+ * pickup is placed too (PICKUP_POWERS_SPEC.md) — the only non-pure step
+ * here, using server random; placePickup's own guards make it
+ * idempotent, so calling this from any route (polls included) is safe.
  */
 export function maybeAutoPlaceSetup(record: GameRecord): {
   record: GameRecord;
@@ -184,6 +188,13 @@ export function maybeAutoPlaceSetup(record: GameRecord): {
       },
     );
     changed = true;
+  }
+  if (changed && state.phase === "playing") {
+    // The flip is when the pickup is placed: only now is the trap/box
+    // layout final. No feed event — a placement event would leak the
+    // pickup's position and kind to both seats; it lives in the server
+    // state only (the battle log records it, in a later phase).
+    state = placePickup(state, Math.random).state;
   }
   return changed
     ? { record: { ...record, state, events }, changed }

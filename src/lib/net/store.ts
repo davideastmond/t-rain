@@ -61,6 +61,14 @@ export type NetEvent =
       outcome: MysteryBoxOutcome;
     })
   | (NetEventBase & {
+      /** A terraform use: public, because the tile itself changes on the
+          shared board. Trap placements get no event — they stay hidden
+          until something steps on them. */
+      type: "terraformed";
+      player: PlayerId;
+      position: Position;
+    })
+  | (NetEventBase & {
       type: "piece-drowned";
       player: PlayerId;
       pieceId: string;
