@@ -6,13 +6,15 @@
 // one run after an algo tweak — the log tells you exactly which code played.
 // Bump the version string whenever you change what a strategy does.
 //
-// "full" is the shipped CPU (chooseCpuAction: nerf-first, nerf hunting,
-// spoiler mode, pathfinding). "pathfinder" is the same Dijkstra routing
-// without nerfs or spoiler play. "greedy" is the original PR #9
-// heuristic, kept as the baseline every fancier CPU has to beat.
-// "hard" is Hard v4 (HARD_CPU_PHASE2_SPEC.md §3): v2's composition
-// plus 1-ply lookahead. v3 (nerf threshold) never shipped — measured
-// negative twice — so v4 builds on v2, not v3.
+// "full" is the shipped CPU (chooseCpuAction: nerf-first, pickup power
+// use, nerf hunting, spoiler mode, pathfinding). "pathfinder" is the
+// same Dijkstra routing without nerfs or spoiler play. "greedy" is the
+// original PR #9 heuristic, kept as the baseline every fancier CPU has
+// to beat.
+// "hard" is Hard v5 (HARD_CPU_PHASE2_SPEC.md §3): v2's composition
+// plus 1-ply lookahead, plus pickup power use (v5 adds the power hook to
+// v4; v3, the nerf threshold, never shipped — measured negative twice —
+// so v4 builds on v2, not v3).
 // "seeker" is a lab-only instrument: full's exact composition with one
 // insertion — a detour to collect its mystery box when the detour is
 // cheap — so box outcomes (trap sense included) finally occur often
@@ -241,8 +243,8 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
   },
   {
     id: "full",
-    version: "full@v4",
-    label: "Full v4 (nerf + hunt + spoiler + pathfinder)",
+    version: "full@v5",
+    label: "Full v5 (nerf + power use + hunt + spoiler + pathfinder)",
     choose: chooseCpuAction,
   },
   {
@@ -253,8 +255,8 @@ export const CPU_STRATEGIES: CpuStrategy[] = [
   },
   {
     id: "hard",
-    version: "hard@v4",
-    label: "Hard v4 (v2 + 1-ply lookahead)",
+    version: "hard@v5",
+    label: "Hard v5 (v2 + 1-ply lookahead + power use)",
     choose: chooseHardAction,
   },
 ];

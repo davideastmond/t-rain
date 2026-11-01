@@ -30,6 +30,7 @@ import {
   WATER_CROSS_COST,
 } from "../game/constants";
 import { applyNerf } from "../game/nerf";
+import { applyPickupTrap, applyTerraform } from "../game/pickups";
 import {
   endTurn,
   findDrownedPiece,
@@ -265,6 +266,32 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
     return {
       narrations: [
         `⚡ ${side} nerfs ${target!.owner === "south" ? "South" : "North"}'s ${target!.character} (${action.targetPieceId})${result.outcome.attritionLoss ? " — game over by attrition!" : ""}`,
+      ],
+      done: driver.finished,
+    };
+  }
+
+  if (action.kind === "use-pickup") {
+    const result =
+      action.power === "trap"
+        ? applyPickupTrap(driver.state, player, action.position)
+        : applyTerraform(driver.state, player, action.position);
+    if (!result.ok) {
+      // A strategy only picks legal uses on its sanitized view — this is
+      // unreachable in practice. End the turn rather than corrupt the log.
+      driverEndTurn(driver, player);
+      return { narrations: [`${side} ends its turn.`], done: driver.finished };
+    }
+    driver.state = result.state;
+    driver.actions++;
+    // No log event yet: battle-log pickup events land in the battle-log
+    // phase (PICKUP_POWERS_SPEC.md §11). Lab games place no pickups
+    // today, so this branch is unreachable until then.
+    return {
+      narrations: [
+        action.power === "trap"
+          ? `💣 ${side} places an extra trap.`
+          : `🌍 ${side} terraformed (${action.position.x}, ${action.position.y}) into plains.`,
       ],
       done: driver.finished,
     };
