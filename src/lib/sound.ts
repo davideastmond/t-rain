@@ -135,6 +135,9 @@ export function netEventSounds(
       case "piece-drowned":
         out.push({ name: "drown", soft: event.player !== seat, delayMs: 0 });
         break;
+      case "terraformed":
+        out.push({ name: "terraform", soft: event.player !== seat, delayMs: 0 });
+        break;
       case "turn-ended":
         // The opponent ended their turn: yours just started.
         if (event.player !== seat) {
