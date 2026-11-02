@@ -8,7 +8,7 @@ feeling.
 
 - `strategies.ts` — the registry. Every CPU the lab can field, each with
   a stable `id` and a `version` that changes whenever its behavior
-  changes (`greedy@v1`, `pathfinder@v3`, `full@v4`, `seeker@v1`). The
+  changes (`greedy@v1`, `pathfinder@v3`, `full@v5`, `seeker@v1`). The
   version is what logs record, so results from before a change never get
   mixed up with results from after it. `seeker` is a lab-only instrument
   (full + box detours) for measuring box outcomes; the shipped CPU never
@@ -53,7 +53,7 @@ rates, nerf conversion) from the raw stream.
 
 ## Tuning workflow
 
-1. Run a tournament: e.g. 100 games of `full@v4` vs `pathfinder@v3`.
+1. Run a tournament: e.g. 100 games of `full@v5` vs `pathfinder@v3`.
 2. Download the `.jsonl`, hand it to Baloo (or a script).
 3. Compare: win rate, average game length, eliminations per game, trap
    hit rate, nerf conversion rate, scores-over-time from `turn_end`.

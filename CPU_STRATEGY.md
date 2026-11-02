@@ -18,12 +18,18 @@ information only.
    CPU holds a token, has 3+ pool points, and an enemy piece stands next to
    one of its pieces — it eliminates the valid target closest to scoring
    (the most advanced enemy runner).
-2. **Nerf hunting** (see below): holding a token with no adjacent target,
+2. **Pickup power use** (PICKUP_POWERS_SPEC.md §13). If the CPU holds a
+   power and has 3+ pool points: a trap goes on the enemy best runner's
+   path, three steps ahead (predicted from a trap-blind view, since the
+   enemy does not know our hidden traps); a terraform fires only when it
+   provably shortens the CPU's own best route. Hard bypasses lookahead
+   for this — lookahead scores a hidden trap at ~zero.
+3. **Nerf hunting** (see below): holding a token with no adjacent target,
    route a piece next to a top runner to manufacture the nerf this turn.
-3. **Spoiler mode** (see below): when the race is lost, intercept the most
+4. **Spoiler mode** (see below): when the race is lost, intercept the most
    imminent threat's path instead of advancing.
-4. **Otherwise, take the best route step** (see below).
-5. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
+5. **Otherwise, take the best route step** (see below).
+6. **Otherwise, end the turn** (`chooseCpuAction` returns null when nothing is
    legal).
 
 ## Pathfinding

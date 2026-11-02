@@ -28,13 +28,22 @@ import {
   GOAL_ROW,
   MAX_POINTS_PER_PIECE_PER_TURN,
   NERF_POOL_COST,
+  PICKUP_POWER_COST,
   PIECES_TO_WIN,
   WATER_CROSS_COST,
 } from "./constants";
 import { legalStepTargets } from "./movement";
 import { nerfTargets } from "./nerf";
+import { canPlacePickupTrap, canTerraform } from "./pickups";
 import { otherPlayer } from "./setup";
-import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./types";
+import {
+  TERRAIN_INFO,
+  type GameState,
+  type PickupPowerKind,
+  type PlayerId,
+  type Position,
+  type TerrainType,
+} from "./types";
 
 /**
  * The game as `player` is allowed to see it: everything is intact except
@@ -84,11 +93,12 @@ export interface CpuStep {
 }
 
 /**
- * One CPU decision: a step, or a nerf.
+ * One CPU decision: a step, a nerf, or a pickup-power use.
  */
 export type CpuAction =
   | { kind: "step"; pieceId: string; to: Position }
-  | { kind: "nerf"; targetPieceId: string };
+  | { kind: "nerf"; targetPieceId: string }
+  | { kind: "use-pickup"; power: PickupPowerKind; position: Position };
 
 /**
  * A cheapest route for one piece to the goal row, as the CPU sees it.
@@ -459,16 +469,200 @@ export function chooseNerfHuntStep(
  *   1. Nerf first (NERF_SPEC.md §8): when holding a token with pool to
  *      spend, eliminate the valid target closest to scoring (the most
  *      advanced enemy runner).
- *   2. Nerf hunting: holding a token but nothing adjacent yet — route a
+ *   2. Pickup power use (PICKUP_POWERS_SPEC.md §CPU hook): a held power
+ *      that is usable now — a trap on the enemy runner's path, or a
+ *      terraform that shortens the player's own best route. It sits
+ *      below the nerf (certain) and above movement (speculative).
+ *   3. Nerf hunting: holding a token but nothing adjacent yet — route a
  *      piece next to a top runner so the nerf fires later this turn.
  *      Elimination beats interception, so this outranks spoiler mode.
- *   3. Spoiler mode: when the opponent needs one more score and we need
+ *   4. Spoiler mode: when the opponent needs one more score and we need
  *      at least two, race is hopeless — intercept the most imminent
  *      threat's path instead of advancing.
- *   4. Otherwise take the best pathfinding step.
+ *   5. Otherwise take the best pathfinding step.
  * Returns null when there's nothing legal to do, which is the page's cue
  * to end the turn.
  */
+
+/**
+ * The cheapest goal route among `player`'s active pieces, from their
+ * sanitized view: lowest total cost, then fewest steps, then a random
+ * pick among ties — the same selection chooseCpuStep makes. No legality
+ * filter: this is a route evaluation (whose path is best?), not a step,
+ * so the per-piece cap and the pool don't apply. Returns null when no
+ * piece has a route.
+ */
+function bestRunnerPath(
+  view: GameState,
+  player: PlayerId,
+  rng: () => number,
+): CpuPath | null {
+  const candidates: CpuPath[] = [];
+  for (const piece of view.pieces) {
+    if (piece.owner !== player || piece.status !== "active") continue;
+    const path = findPathToGoal(view, piece.id);
+    if (path) candidates.push(path);
+  }
+  if (candidates.length === 0) return null;
+  candidates.sort(
+    (a, b) => a.totalCost - b.totalCost || a.steps.length - b.steps.length,
+  );
+  const best = candidates[0];
+  const tied = candidates.filter(
+    (p) =>
+      p.totalCost === best.totalCost && p.steps.length === best.steps.length,
+  );
+  return tied[Math.floor(rng() * tied.length)];
+}
+
+/** A copy of `view` with one tile's terrain replaced (route probing). */
+function withTileTerrain(
+  view: GameState,
+  position: Position,
+  terrain: TerrainType,
+): GameState {
+  const tiles = [...view.tiles];
+  tiles[tileIndex(position.x, position.y)] = {
+    ...tiles[tileIndex(position.x, position.y)],
+    terrain,
+  };
+  return { ...view, tiles };
+}
+
+/**
+ * Where `player` should put a held trap power: on the enemy best
+ * runner's path, a few steps ahead of the runner. Scan order: from the
+ * third step ahead to the goal, then back toward the runner, then the
+ * nearest legal tile to the path (or to the runner, when the path is
+ * empty because it already stands on the goal row). Returns null when no
+ * legal tile exists (the power then expires).
+ */
+function chooseTrapTarget(
+  view: GameState,
+  player: PlayerId,
+  enemyPath: CpuPath,
+): Position | null {
+  const steps = enemyPath.steps;
+  const start = steps.length === 0 ? 0 : Math.min(2, steps.length - 1);
+  for (let i = start; i < steps.length; i++) {
+    if (canPlacePickupTrap(view, player, steps[i]).ok) return steps[i];
+  }
+  for (let i = start - 1; i >= 0; i--) {
+    if (canPlacePickupTrap(view, player, steps[i]).ok) return steps[i];
+  }
+  const runner = view.pieces.find((p) => p.id === enemyPath.pieceId);
+  const anchors = steps.length > 0 ? steps : runner ? [runner.position] : [];
+  let best: Position | null = null;
+  let bestDist = Infinity;
+  for (const tile of view.tiles) {
+    const pos = tile.position;
+    if (!canPlacePickupTrap(view, player, pos).ok) continue;
+    const d = Math.min(
+      ...anchors.map((a) => Math.abs(a.x - pos.x) + Math.abs(a.y - pos.y)),
+    );
+    if (d < bestDist) {
+      bestDist = d;
+      best = pos;
+    }
+  }
+  return best;
+}
+
+/**
+ * Where `player` should put a held terraform power: the single tile
+ * whose terraforming most reduces the player's best runner's route cost.
+ * Compares the runner's real cheapest route against an optimistic one
+ * where every water/forest tile costs 1 (as if already terraformed);
+ * when the optimistic route is cheaper, each water/forest tile on it is
+ * verified by recomputing the real route with just that tile terraformed,
+ * and the biggest verified saving wins. Returns null when no tile helps
+ * (the power then expires).
+ */
+function chooseTerraformTarget(
+  view: GameState,
+  player: PlayerId,
+  ownPath: CpuPath,
+): Position | null {
+  const optimistic: GameState = {
+    ...view,
+    tiles: view.tiles.map((tile) =>
+      tile.terrain === "plains"
+        ? tile
+        : { ...tile, terrain: "plains" as const },
+    ),
+  };
+  const optPath = findPathToGoal(optimistic, ownPath.pieceId);
+  if (!optPath || optPath.totalCost >= ownPath.totalCost) return null;
+  const seen = new Set<string>();
+  let best: Position | null = null;
+  let bestSaving = 0;
+  for (const pos of optPath.steps) {
+    const key = posKey(pos);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (view.tiles[tileIndex(pos.x, pos.y)].terrain === "plains") continue;
+    if (!canTerraform(view, player, pos).ok) continue;
+    const newPath = findPathToGoal(
+      withTileTerrain(view, pos, "plains"),
+      ownPath.pieceId,
+    );
+    if (!newPath) continue;
+    const saving = ownPath.totalCost - newPath.totalCost;
+    if (saving > bestSaving) {
+      bestSaving = saving;
+      best = pos;
+    }
+  }
+  return best;
+}
+
+/**
+ * A held pickup power use for `player`, from their sanitized view — the
+ * CPU-use hook (PICKUP_POWERS_SPEC.md §CPU hook). Checked every tick, so
+ * a power collected mid-turn is used on the next tick while the pool
+ * still covers it; anything unusable expires at endTurn as usual.
+ * Priority is the caller's business: chooseCpuAction and chooseHardAction
+ * both check this after the nerf branch, so a certain elimination still
+ * outranks a speculative trap. A trap goes on the enemy best runner's
+ * path — predicted from a trap-blind view, because the enemy does not
+ * know our hidden traps and routing it around them (as the raw view
+ * would) predicts a detour it will never take. A terraform only fires
+ * when it provably shortens the player's own best route. Returns null
+ * when the player holds nothing usable.
+ */
+export function choosePickupPowerAction(
+  view: GameState,
+  player: PlayerId,
+  rng: () => number = Math.random,
+): CpuAction | null {
+  if (view.phase !== "playing" || view.currentPlayer !== player) return null;
+  if (view.movementPointsLeft < PICKUP_POWER_COST) return null;
+  const foe = otherPlayer(player);
+  for (const power of view.heldPowers[player]) {
+    if (power === "trap") {
+      // The enemy's true path ignores our hidden traps.
+      const blind: GameState = {
+        ...view,
+        traps: view.traps.filter((t) => t.owner === foe),
+      };
+      const foePath = bestRunnerPath(blind, foe, rng);
+      if (!foePath) continue;
+      const target = chooseTrapTarget(view, player, foePath);
+      if (target) {
+        return { kind: "use-pickup", power: "trap", position: target };
+      }
+    } else {
+      const ownPath = bestRunnerPath(view, player, rng);
+      if (!ownPath) continue;
+      const target = chooseTerraformTarget(view, player, ownPath);
+      if (target) {
+        return { kind: "use-pickup", power: "terraform", position: target };
+      }
+    }
+  }
+  return null;
+}
+
 export function chooseCpuAction(
   view: GameState,
   player: PlayerId,
@@ -490,6 +684,9 @@ export function chooseCpuAction(
     }
     return { kind: "nerf", targetPieceId: best.id };
   }
+
+  const power = choosePickupPowerAction(view, player, rng);
+  if (power) return power;
 
   const hunt = chooseNerfHuntStep(view, player, rng);
   if (hunt) return { kind: "step", ...hunt };
