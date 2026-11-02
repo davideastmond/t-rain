@@ -187,12 +187,17 @@ same-turn-only plus a pool cost.
 - Two new routes following the nerf route pattern (seat check, version
   check, events): `POST /api/games/[gameId]/pickup-trap` and
   `POST /api/games/[gameId]/pickup-terraform`.
-- Log schema stays v1 (additive event types; old logs replay with
-  `pickups: []`). But note the two logs are different things:
+- Log schema stays v1 (additive event types only). But note the two
+  logs are different things:
   - The **battle log** records `pickup_place` at the setup→playing
     transition (position, kind) — this is what keeps replays exact
-    despite seed-independent placement — plus `pickup_collect` and
-    `pickup_use` events.
+    despite seed-independent placement — plus `pickup_use` (turn,
+    player, power, position). Collection is not a separate event: it
+    lands inside the move event's consequences as
+    `{ kind: "pickup", power }`, keeping one step to one log line.
+    Logs recorded before pickups are detectable by the absence of
+    `pickupPowerCost` in `game_start` tunables; replay those with
+    `createBattle`'s `pickups: false` option so the rng stream matches.
   - The **player feed** (the per-game event log both seats poll) must
     NEVER carry placement or collection: a placement event would leak
     the pickup's position and kind to the opponent, and a collection
@@ -251,10 +256,12 @@ same-turn-only plus a pool cost.
   like a setup trap); a CPU terraform is narrated with the terraform
   sound, since the tile visibly changes. CPU collection stays
   unnarrated, as in phase 2.
-- Battle lab: the strategies already share the use code, but lab games
-  place no pickups yet (`createBattle` does not call `placePickup`),
-  so tournaments are unaffected until the battle-log phase wires
-  placement and log events together.
+- Battle lab: `createBattle` places the pickup with the battle rng
+  right after the setups and logs `pickup_place`; collection and use
+  are logged as in §11, so tournaments now include powers on both
+  sides. No strategy version bump was needed — the strategies are
+  unchanged, and placement is environment, marked by the
+  `pickup_place` event and the `pickupPowerCost` tunable.
 
 ## 14. Test plan (for the implementation PRs)
 
