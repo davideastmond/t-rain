@@ -26,11 +26,16 @@ import {
   MOVEMENT_POINTS_PER_TURN,
   NERF_POOL_COST,
   NERF_TOKEN_CAP,
+  PICKUP_POWER_COST,
   PIECES_TO_WIN,
   WATER_CROSS_COST,
 } from "../game/constants";
 import { applyNerf } from "../game/nerf";
-import { applyPickupTrap, applyTerraform } from "../game/pickups";
+import {
+  applyPickupTrap,
+  applyTerraform,
+  placePickup,
+} from "../game/pickups";
 import {
   endTurn,
   findDrownedPiece,
@@ -57,6 +62,12 @@ export interface BattleOptions {
   /** Setup strategy per side. Defaults to `auto` (current behavior). */
   southSetupId?: string;
   northSetupId?: string;
+  /**
+   * Place the game's pickup power. Set false only to replay a log
+   * recorded before pickups existed (detectable: no pickupPowerCost in
+   * game_start tunables). Defaults to true.
+   */
+  pickups?: boolean;
 }
 
 export interface BattleResult {
@@ -122,6 +133,14 @@ export function createBattle(
   if (!northSetup.ok) throw new Error(`north setup (${setups.north.id}) failed: ${northSetup.error}`);
   state = northSetup.state;
 
+  // The setup→playing flip is when the pickup is placed, as in local
+  // and online games. Setups derive their randomness from the seed, so
+  // the battle rng is untouched until here — placement is the first
+  // thing it rolls, which keeps deterministic replays exact.
+  const placed =
+    opts.pickups === false ? { state, placed: false } : placePickup(state, rng);
+  state = placed.state;
+
   log.push({
     v: 1,
     type: "game_start",
@@ -142,6 +161,7 @@ export function createBattle(
       boxTrapSenseChance: BOX_TRAP_SENSE_CHANCE,
       extraStepsPoints: EXTRA_STEPS_POINTS,
       waterCrossCost: WATER_CROSS_COST,
+      pickupPowerCost: PICKUP_POWER_COST,
     },
   });
   for (const player of ["south", "north"] as PlayerId[]) {
@@ -159,6 +179,16 @@ export function createBattle(
       traps: state.traps
         .filter((t) => t.owner === player)
         .map((t) => [t.position.x, t.position.y] as [number, number]),
+    });
+  }
+
+  if (placed.placed && state.pickups.length > 0) {
+    const [pickup] = state.pickups;
+    log.push({
+      v: 1,
+      type: "pickup_place",
+      position: [pickup.position.x, pickup.position.y],
+      kind: pickup.kind,
     });
   }
 
@@ -284,9 +314,14 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
     }
     driver.state = result.state;
     driver.actions++;
-    // No log event yet: battle-log pickup events land in the battle-log
-    // phase (PICKUP_POWERS_SPEC.md §11). Lab games place no pickups
-    // today, so this branch is unreachable until then.
+    driver.log.push({
+      v: 1,
+      type: "pickup_use",
+      turn: driver.turns + 1,
+      player,
+      power: action.power,
+      position: [action.position.x, action.position.y],
+    });
     return {
       narrations: [
         action.power === "trap"
@@ -309,6 +344,9 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
   const events: MoveEvent["events"] = [];
   if (result.outcome.box) {
     events.push({ kind: "box", outcome: result.outcome.box });
+  }
+  if (result.outcome.pickup) {
+    events.push({ kind: "pickup", power: result.outcome.pickup });
   }
   if (result.outcome.eliminated && result.outcome.box !== "booby-trap") {
     events.push({ kind: "trap", pos: [action.to.x, action.to.y], pieceEliminated: true });
@@ -349,9 +387,19 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
         ]
       : result.outcome.scored
         ? [
+            // Collection resolves before scoring, so it narrates first.
+            ...(result.outcome.pickup
+              ? [
+                  `✨ ${label} finds a pickup power: ${result.outcome.pickup === "trap" ? "extra trap" : "terraform"}!`,
+                ]
+              : []),
             `🎉 ${label} crosses! ${side}: ${driver.state.scores[player]}/${PIECES_TO_WIN}${driver.finished ? " — game over!" : ""}`,
           ]
-        : [];
+        : result.outcome.pickup
+          ? [
+              `✨ ${label} finds a pickup power: ${result.outcome.pickup === "trap" ? "extra trap" : "terraform"}!`,
+            ]
+          : [];
   return { narrations, done: driver.finished };
 }
 
