@@ -17,6 +17,7 @@ import {
   MOVEMENT_POINTS_PER_TURN,
   NERF_POOL_COST,
   NERF_TOKEN_CAP,
+  PICKUP_POWER_COST,
   PIECES_PER_PLAYER,
   PIECES_TO_WIN,
   SETUP_ROWS,
@@ -170,6 +171,40 @@ export default function RulesPage() {
             %) — the collecting piece is eliminated
           </li>
         </ul>
+      </Section>
+
+      <Section title="Pickup powers">
+        <p>
+          One more hidden item sits somewhere in the middle of the
+          board — never in either side&apos;s back rows, never on the
+          neutral row, and never on a trap or a mystery box. Step a
+          piece onto it to collect it. It&apos;s a coin flip what you
+          get:
+        </p>
+        <ul className="list-disc pl-6">
+          <li>
+            <strong className="text-neutral-100">Extra trap</strong> —
+            place it on any open tile, even water or a goal row, and it
+            works exactly like one of your own traps
+          </li>
+          <li>
+            <strong className="text-neutral-100">Terraform</strong> —
+            turn one water or forest tile into plains, permanently. It
+            can open a route that wasn&apos;t there before
+          </li>
+        </ul>
+        <p>
+          Either way it costs{" "}
+          <strong className="text-neutral-100">
+            {PICKUP_POWER_COST} movement points
+          </strong>{" "}
+          to use, and only on the turn you collected it — end your turn
+          holding one and it&apos;s gone. Trap sense doesn&apos;t reveal
+          pickups, and one nobody ever finds is revealed after the
+          game. Against the CPU, the same rules apply: a terraform it
+          plays is announced when it happens, while a trap it places
+          stays hidden, just like yours.
+        </p>
       </Section>
 
       <Section title="Scoring & nerfs">

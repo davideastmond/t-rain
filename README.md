@@ -53,6 +53,17 @@ territory to roll what's inside:
   they stay live, so don't step on one later.
 - **Booby trap (10%)** — the collecting piece is eliminated.
 
+**Pickup powers.** One more hidden item sits somewhere in the middle of
+the board — never in either side's back rows, never on the neutral row,
+and never on a trap or a mystery box. Step a piece onto it to collect
+it; it's a coin flip what you get: an **extra trap**, placeable on any
+open tile (even water or a goal row) and working exactly like one of
+your own traps, or a **terraform**, turning one water or forest tile
+into plains permanently. Either costs 3 movement points to use, and only
+on the turn you collected it — end your turn holding one and it's gone.
+Trap sense doesn't reveal pickups, and one nobody finds is revealed
+after the game.
+
 **Scoring and nerfs.** Each piece that crosses earns you a nerf token
 (hold at most 2, usable from your next turn). Spend 1 token + 3 movement
 points to eliminate an enemy piece standing next to one of yours — no
