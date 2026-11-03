@@ -184,6 +184,11 @@ export function createGame(seed: number): GameState {
     boxRolls: 0,
     revealedTraps: { north: [], south: [] },
     nerfMarkers: [],
+    // No pickups here on purpose: placement is a separate,
+    // seed-independent step (placePickup) that runs when the game flips
+    // from setup to playing, so createGame stays seed-pure.
+    pickups: [],
+    heldPowers: { north: [], south: [] },
   };
 }
 

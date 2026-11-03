@@ -173,8 +173,8 @@ describe("chooseHardAction", () => {
 });
 
 describe("hard strategy registration", () => {
-  it("is registered as hard@v4", () => {
-    expect(getStrategy("hard").version).toBe("hard@v4");
+  it("is registered as hard@v5", () => {
+    expect(getStrategy("hard").version).toBe("hard@v5");
   });
 });
 

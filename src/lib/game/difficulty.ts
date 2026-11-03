@@ -1,6 +1,6 @@
 // CPU difficulty tiers for the local page (HARD_CPU_PHASE2_SPEC.md
 // step 5). Normal is exactly today's CPU (full play + auto setup);
-// Hard pairs hard@v4 play with choke setup. Both tiers are expressed
+// Hard pairs hard@v5 play with choke setup. Both tiers are expressed
 // as registry ids so the page never branches on strategy internals,
 // and the final combined tournament measures these same two tiers.
 import { getSetupStrategy } from "../battle/setup-strategies";

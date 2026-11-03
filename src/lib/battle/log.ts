@@ -17,6 +17,7 @@
 import type {
   CharacterId,
   MysteryBoxOutcome,
+  PickupPowerKind,
   PlayerId,
   TerrainType,
 } from "../game/types";
@@ -56,6 +57,7 @@ export interface GameStartEvent {
     boxTrapSenseChance: number;
     extraStepsPoints: number;
     waterCrossCost: number;
+    pickupPowerCost: number;
   };
 }
 
@@ -86,8 +88,31 @@ export interface MoveEvent {
   events: Array<
     | { kind: "trap"; pos: Coord; pieceEliminated: true }
     | { kind: "box"; outcome: MysteryBoxOutcome }
+    | { kind: "pickup"; power: PickupPowerKind }
     | { kind: "score"; pieceId: string; newScore: number }
   >;
+}
+
+/**
+ * The game's single pickup power, placed when setup flips to playing
+ * (PICKUP_POWERS_SPEC.md §11). The lab log is a complete record, not a
+ * player view, so position and kind are both recorded.
+ */
+export interface PickupPlaceEvent {
+  v: 1;
+  type: "pickup_place";
+  position: Coord;
+  kind: PickupPowerKind;
+}
+
+/** A held pickup power spent (PICKUP_POWERS_SPEC.md §11). */
+export interface PickupUseEvent {
+  v: 1;
+  type: "pickup_use";
+  turn: number;
+  player: PlayerId;
+  power: PickupPowerKind;
+  position: Coord;
 }
 
 export interface NerfEvent {
@@ -128,8 +153,10 @@ export interface GameEndEvent {
 export type BattleEvent =
   | GameStartEvent
   | SetupEvent
+  | PickupPlaceEvent
   | MoveEvent
   | NerfEvent
+  | PickupUseEvent
   | TurnEndEvent
   | GameEndEvent;
 

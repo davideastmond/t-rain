@@ -32,6 +32,7 @@ import {
   NERF_POOL_COST,
   NERF_TOKEN_CAP,
   NEUTRAL_ROW,
+  PICKUP_POWER_COST,
   PIECES_PER_PLAYER,
   PIECES_TO_WIN,
   TRAPS_PER_PLAYER,
@@ -39,6 +40,7 @@ import {
 import {
   MOVE_ERROR_MESSAGES,
   NERF_ERROR_MESSAGES,
+  PICKUP_POWER_ERROR_MESSAGES,
   playerLabel,
   SETUP_ERROR_MESSAGES,
 } from "@/lib/game/messages";
@@ -46,6 +48,7 @@ import { getPiece, legalStepTargets, pieceAt } from "@/lib/game/movement";
 import type { MoveError } from "@/lib/game/movement";
 import { nerfTargets } from "@/lib/game/nerf";
 import type { NerfError } from "@/lib/game/nerf";
+import type { PickupPowerError } from "@/lib/game/pickups";
 import { BIOME_PALETTES, PLAYER_COLORS } from "@/lib/game/palettes";
 import {
   isMuted,
@@ -66,6 +69,8 @@ import type { NetEvent } from "@/lib/net/store";
 import type {
   CharacterId,
   GameState,
+  Pickup,
+  PickupPowerKind,
   Piece,
   PlayerId,
   Position,
@@ -82,10 +87,33 @@ function actionErrorMessage(error: unknown): string {
       return MOVE_ERROR_MESSAGES[error as MoveError];
     if (error in NERF_ERROR_MESSAGES)
       return NERF_ERROR_MESSAGES[error as NerfError];
+    if (error in PICKUP_POWER_ERROR_MESSAGES)
+      return PICKUP_POWER_ERROR_MESSAGES[error as PickupPowerError];
     if (error === "version-conflict") return "The game moved — refreshed.";
     if (error === "malformed-body") return "That request was malformed.";
   }
   return "Something went wrong — try again.";
+}
+
+/** Plain words for a pickup power kind, for feed lines and the recap. */
+function pickupPowerLabel(kind: PickupPowerKind): string {
+  return kind === "trap" ? "extra trap" : "terraform";
+}
+
+/** Feed line for a pickup power collection. The collector narrates
+    from their own step response — collection has no feed event, so the
+    opponent never learns a power was found. */
+function pickupMessage(who: string, kind: PickupPowerKind): string {
+  return kind === "trap"
+    ? `✨ ${who} found a pickup power: an extra trap! Place it anywhere this turn (${PICKUP_POWER_COST} pts).`
+    : `✨ ${who} found a pickup power: terraform! Turn a water or forest tile into plains this turn (${PICKUP_POWER_COST} pts).`;
+}
+
+/** Post-game recap line for an unclaimed pickup, if one remains. */
+function unclaimedPickupNote(pickups: Pickup[]): string | null {
+  if (pickups.length === 0) return null;
+  const [pickup] = pickups;
+  return `An unclaimed ${pickupPowerLabel(pickup.kind)} pickup sat at (${pickup.position.x}, ${pickup.position.y}).`;
 }
 
 /** Turn fresh poll/POST events into feed lines. Plain steps stay silent. */
@@ -163,6 +191,11 @@ function describeEvents(
         lines.push(`🌊 ${who} drowned — it ended its turn on water!`);
         break;
       }
+      case "terraformed":
+        lines.push(
+          `🌍 ${playerLabel(event.player)} terraformed (${event.position.x}, ${event.position.y}) into plains!`,
+        );
+        break;
       case "forfeited":
         lines.push(`🏳 ${playerLabel(event.player)} forfeited the game.`);
         break;
@@ -210,6 +243,7 @@ function GameClient() {
   const [forfeitArmed, setForfeitArmed] = useState(false);
   /** Nerf targeting mode: red highlights, clicks execute nerfs. */
   const [nerfArmed, setNerfArmed] = useState(false);
+  const [powerArmed, setPowerArmed] = useState<PickupPowerKind | null>(null);
 
   const versionRef = useRef(0);
   const lastEventSeqRef = useRef(0);
@@ -574,8 +608,33 @@ function GameClient() {
       return;
     }
     setSelectedPieceId(null);
+    setPowerArmed(null);
     setNerfArmed(true);
     pushFeed(["⚡ Nerf armed — tap a red-highlighted enemy piece."]);
+  }
+
+  /** Arm/disarm a held pickup power's targeting mode. Like nerf, but
+      with no board highlight: anywhere-targeting would light up most
+      of the board, so the feed line explains and clicks are validated
+      by the server instead. */
+  function togglePower(kind: PickupPowerKind) {
+    if (!netState || !seat) return;
+    if (powerArmed === kind) {
+      setPowerArmed(null);
+      return;
+    }
+    if (!netState.heldPowers[seat].includes(kind)) {
+      pushFeed(["You don't hold that power right now."]);
+      return;
+    }
+    setSelectedPieceId(null);
+    setNerfArmed(false);
+    setPowerArmed(kind);
+    pushFeed([
+      kind === "trap"
+        ? "💣 Extra trap armed — tap any tile to place it (3 pts). It stays hidden until something steps on it."
+        : "🌍 Terraform armed — tap a water or forest tile to turn it into plains (3 pts).",
+    ]);
   }
 
   async function handlePlayClick(position: Position) {
@@ -588,6 +647,25 @@ function GameClient() {
         targetPieceId: clicked ? clicked.id : "",
       });
       if (data) setNerfArmed(false);
+      return;
+    }
+    // Pickup power targeting mode: every click is a use attempt on the
+    // tile under the cursor. Trap placement has no feed event (it must
+    // stay hidden), so the placer narrates from the response; terraform
+    // narrates itself through its public feed event, so nothing extra
+    // is needed here.
+    if (powerArmed) {
+      const data = await postAction(
+        powerArmed === "trap" ? "pickup-trap" : "pickup-terraform",
+        { position },
+      );
+      if (data) {
+        setPowerArmed(null);
+        if (powerArmed === "trap") {
+          pushFeed([`💣 You placed an extra trap!`]);
+          playSound("place");
+        }
+      }
       return;
     }
     const clicked = pieceAt(netState, position);
@@ -606,9 +684,27 @@ function GameClient() {
     // Keep the selection after a plain step (so the piece can keep moving);
     // clear it when the piece left the board.
     const outcome = data?.outcome as
-      | { eliminated?: boolean; scored?: boolean }
+      | { eliminated?: boolean; scored?: boolean; pickup?: PickupPowerKind | null }
       | undefined;
     if (outcome?.eliminated || outcome?.scored) setSelectedPieceId(null);
+    // Collection has no feed event (the opponent must never learn a
+    // power was found), so the collector narrates from the response.
+    if (outcome?.pickup && seat) {
+      pushFeed([pickupMessage(`You`, outcome.pickup)]);
+    }
+  }
+
+  /** End the turn, noting a held power that just expired unused. */
+  async function handleEndTurn() {
+    if (!netState || !seat) return;
+    const held = netState.heldPowers[seat];
+    setSelectedPieceId(null);
+    setNerfArmed(false);
+    setPowerArmed(null);
+    const data = await postAction("end-turn");
+    if (data && held.length > 0) {
+      pushFeed([`Your ${pickupPowerLabel(held[0])} expired unused.`]);
+    }
   }
 
   async function copyInviteLink() {
@@ -878,6 +974,11 @@ function GameClient() {
                 }
                 .
               </p>
+              {netState.pickups.length > 0 && (
+                <p className="max-w-md text-sm text-neutral-400">
+                  {unclaimedPickupNote(netState.pickups)}
+                </p>
+              )}
               <div className="flex flex-wrap justify-center gap-3 text-sm">
                 {(["north", "south"] as PlayerId[]).map((player) => (
                   <div
@@ -964,16 +1065,38 @@ function GameClient() {
                     {selectedPiece.hasTrapSense && <> · 🔍 trap sense</>}
                   </>
                 )}
+                {playing && netState.heldPowers[seat].length > 0 && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="font-semibold text-amber-300">
+                      {netState.heldPowers[seat]
+                        .map((kind) =>
+                          kind === "trap"
+                            ? "💣 extra trap held — use it this turn (3 pts)"
+                            : "🌍 terraform held — use it this turn (3 pts)",
+                        )
+                        .join(" · ")}
+                    </span>
+                  </>
+                )}
+                {powerArmed && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="font-semibold text-amber-300">
+                      {powerArmed === "trap"
+                        ? "extra trap targeting — tap any tile"
+                        : "terraform targeting — tap a water or forest tile"}
+                    </span>
+                  </>
+                )}
               </p>
               {myTurn ? (
                 <div className="flex flex-wrap justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedPieceId(null);
-                      setNerfArmed(false);
-                      postAction("end-turn");
-                    }}
+                    onClick={handleEndTurn}
                     disabled={busy}
                     className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
                   >
@@ -995,12 +1118,49 @@ function GameClient() {
                   >
                     {nerfArmed ? "⚡ Cancel nerf" : "⚡ Nerf"}
                   </button>
+                  {netState.heldPowers[seat].includes("trap") && (
+                    <button
+                      type="button"
+                      onClick={() => togglePower("trap")}
+                      disabled={
+                        busy || netState.movementPointsLeft < PICKUP_POWER_COST
+                      }
+                      className={`rounded-full px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        powerArmed === "trap"
+                          ? "bg-amber-600 text-white hover:bg-amber-500"
+                          : "bg-neutral-800 hover:bg-neutral-700"
+                      }`}
+                    >
+                      {powerArmed === "trap"
+                        ? "💣 Cancel trap"
+                        : "💣 Place extra trap"}
+                    </button>
+                  )}
+                  {netState.heldPowers[seat].includes("terraform") && (
+                    <button
+                      type="button"
+                      onClick={() => togglePower("terraform")}
+                      disabled={
+                        busy || netState.movementPointsLeft < PICKUP_POWER_COST
+                      }
+                      className={`rounded-full px-5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        powerArmed === "terraform"
+                          ? "bg-amber-600 text-white hover:bg-amber-500"
+                          : "bg-neutral-800 hover:bg-neutral-700"
+                      }`}
+                    >
+                      {powerArmed === "terraform"
+                        ? "🌍 Cancel terraform"
+                        : "🌍 Terraform"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
                       if (forfeitArmed) {
                         setForfeitArmed(false);
                         setNerfArmed(false);
+                        setPowerArmed(null);
                         postAction("forfeit");
                       } else {
                         setForfeitArmed(true);

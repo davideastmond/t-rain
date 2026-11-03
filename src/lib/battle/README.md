@@ -8,7 +8,7 @@ feeling.
 
 - `strategies.ts` — the registry. Every CPU the lab can field, each with
   a stable `id` and a `version` that changes whenever its behavior
-  changes (`greedy@v1`, `pathfinder@v3`, `full@v4`, `seeker@v1`). The
+  changes (`greedy@v1`, `pathfinder@v3`, `full@v5`, `seeker@v1`). The
   version is what logs record, so results from before a change never get
   mixed up with results from after it. `seeker` is a lab-only instrument
   (full + box detours) for measuring box outcomes; the shipped CPU never
@@ -28,32 +28,40 @@ feeling.
 
 ## The log format (JSONL, one event per line)
 
-| event       | when                                           |
-|-------------|------------------------------------------------|
-| `game_start`| game begins: seed, strategy versions, tunables |
-| `setup`     | per player: piece placements + trap positions  |
-| `move`      | one step: from/to, cost, terrain, pool state, trap/score/box consequences |
-| `nerf`      | one nerf: target piece, tokens left            |
-| `turn_end`  | scores snapshot after each turn; `drownedPieceId` when a piece drowned at the endTurn |
-| `game_end`  | winner, reason (`five_across`/`attrition`/`turn_cap`), totals |
+| event         | when                                           |
+|---------------|------------------------------------------------|
+| `game_start`  | game begins: seed, strategy versions, tunables |
+| `setup`       | per player: piece placements + trap positions  |
+| `pickup_place`| the game's pickup: position + kind, placed when setup flips to playing |
+| `move`        | one step: from/to, cost, terrain, pool state, trap/score/box/pickup consequences |
+| `nerf`        | one nerf: target piece, tokens left            |
+| `pickup_use`  | one power spent: player, power, position       |
+| `turn_end`    | scores snapshot after each turn; `drownedPieceId` when a piece drowned at the endTurn |
+| `game_end`    | winner, reason (`five_across`/`attrition`/`turn_cap`), totals |
 
 Coordinates are `[x, y]`. Every event carries `v: 1` (schema version).
 Mystery boxes: a collection appears in the `move` event's consequences as
 `{ kind: "box", outcome }`; a booby trap logs the box event only (never a
-fake trap event). `game_start` tunables include the box odds/costs.
+fake trap event). A pickup collection appears the same way, as
+`{ kind: "pickup", power }`. `game_start` tunables include the box
+odds/costs and the pickup power cost.
 
 ## Replaying a game
 
-Seed + the two `setup` events + the ordered `move`/`nerf`/`turn_end`
-events reconstruct the game exactly: `createGame(seed)`, `applySetup` with
-the logged placements, then `movePieceStep` / `applyNerf` / `endTurn` per
-event. Nothing in the log is derived from a strategy's internals, so a
-tuner script can recompute any stat (distance-to-goal deltas, trap hit
-rates, nerf conversion) from the raw stream.
+Seed + the two `setup` events + the `pickup_place` event + the ordered
+`move`/`nerf`/`pickup_use`/`turn_end` events reconstruct the game exactly:
+`createGame(seed)`, `applySetup` with the logged placements, `placePickup`
+with the battle rng, then `movePieceStep` / `applyNerf` / power uses /
+`endTurn` per event. Nothing in the log is derived from a strategy's
+internals, so a tuner script can recompute any stat (distance-to-goal
+deltas, trap hit rates, nerf conversion) from the raw stream. Logs
+recorded before pickups (no `pickupPowerCost` in `game_start` tunables)
+replay with `createBattle`'s `pickups: false` option, so the rng stream
+matches.
 
 ## Tuning workflow
 
-1. Run a tournament: e.g. 100 games of `full@v4` vs `pathfinder@v3`.
+1. Run a tournament: e.g. 100 games of `full@v5` vs `pathfinder@v3`.
 2. Download the `.jsonl`, hand it to Baloo (or a script).
 3. Compare: win rate, average game length, eliminations per game, trap
    hit rate, nerf conversion rate, scores-over-time from `turn_end`.

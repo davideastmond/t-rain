@@ -25,6 +25,7 @@ function outcome(patch: Partial<StepOutcome>): StepOutcome {
     scored: false,
     box: null,
     revealed: [],
+    pickup: null,
     ...patch,
   };
 }
@@ -168,6 +169,23 @@ describe("netEventSounds", () => {
     ).toEqual([{ name: "nerf", soft: true, delayMs: 0 }]);
   });
 
+  it("maps a terraform to the terraform sound, soft for the opponent", () => {
+    expect(
+      netEventSounds(
+        [event({ type: "terraformed", player: "north", position: { x: 5, y: 5 } })],
+        state,
+        "south",
+      ),
+    ).toEqual([{ name: "terraform", soft: true, delayMs: 0 }]);
+    expect(
+      netEventSounds(
+        [event({ type: "terraformed", player: "south", position: { x: 5, y: 5 } })],
+        state,
+        "south",
+      ),
+    ).toEqual([{ name: "terraform", soft: false, delayMs: 0 }]);
+  });
+
   it("maps box outcomes with tails, and booby to trap alone", () => {
     expect(
       netEventSounds(
@@ -260,6 +278,7 @@ describe("playSound safety and mute", () => {
   it("no-ops safely without an audio context", () => {
     expect(() => playSound("move")).not.toThrow();
     expect(() => playSound("win", true)).not.toThrow();
+    expect(() => playSound("terraform")).not.toThrow();
   });
 
   it("persists the mute flag in localStorage", () => {

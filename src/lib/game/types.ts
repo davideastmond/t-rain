@@ -105,6 +105,22 @@ export interface Trap {
   triggered: boolean;
 }
 
+/**
+ * What a pickup power does. "trap" places an extra trap; "terraform"
+ * turns one water or forest tile into plains. See PICKUP_POWERS_SPEC.md.
+ */
+export type PickupPowerKind = "trap" | "terraform";
+
+/**
+ * One pickup power sitting on the board, invisible until collected.
+ * There is at most one per game, placed by a seed-independent step when
+ * the game flips from setup to playing (never by createGame).
+ */
+export interface Pickup {
+  position: Position;
+  kind: PickupPowerKind;
+}
+
 /** What a mystery box turned out to contain, rolled at collection time. */
 export type MysteryBoxOutcome =
   | "extra-steps"
@@ -195,6 +211,18 @@ export interface GameState {
    * keeps it.
    */
   nerfMarkers: Array<{ position: Position; victim: PlayerId }>;
+  /**
+   * Uncollected pickup powers on the board (PICKUP_POWERS_SPEC.md).
+   * Invisible: sanitizeForPlayer strips them from every view, and the
+   * page never renders them during play.
+   */
+  pickups: Pickup[];
+  /**
+   * Pickup powers each player currently holds. Granted on collection,
+   * cleared for the ending player at endTurn — a power never survives
+   * into a later turn.
+   */
+  heldPowers: Record<PlayerId, PickupPowerKind[]>;
 }
 
 /**

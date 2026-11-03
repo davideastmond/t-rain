@@ -205,6 +205,7 @@ describe("movePieceStep", () => {
       scored: false,
       box: null,
       revealed: [],
+      pickup: null,
     });
     expect(result.state.movementPointsLeft).toBe(9);
     expect(result.state.spentThisTurn[CAT]).toBe(1);

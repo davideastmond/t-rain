@@ -1,5 +1,5 @@
 // CPU difficulty tiers (HARD_CPU_PHASE2_SPEC.md step 5): Normal is
-// full play + auto setup, Hard is hard@v4 play + choke setup. The
+// full play + auto setup, Hard is hard@v5 play + choke setup. The
 // play dispatch is proven on the state where the two tiers disagree:
 // full hunts a distant runner, lookahead races instead.
 import { describe, expect, it } from "vitest";

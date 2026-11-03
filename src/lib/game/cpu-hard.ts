@@ -41,6 +41,7 @@ import { GOAL_ROW, MOVEMENT_POINTS_PER_TURN } from "./constants";
 import {
   chooseCpuAction,
   chooseNerfHuntStep,
+  choosePickupPowerAction,
   chooseSpoilerStep,
   findPathToGoal,
   piecesToWin,
@@ -50,6 +51,7 @@ import {
 } from "./cpu";
 import { legalStepTargets, movePieceStep } from "./movement";
 import { applyNerf, nerfTargets } from "./nerf";
+import { applyPickupTrap, applyTerraform } from "./pickups";
 import { otherPlayer } from "./setup";
 import { TERRAIN_INFO, type GameState, type PlayerId, type Position } from "./types";
 
@@ -294,6 +296,16 @@ function applyAction(
     const result = applyNerf(state, player, action.targetPieceId);
     return result.ok ? result.state : null;
   }
+  if (action.kind === "use-pickup") {
+    // Unreachable today: the power branch returns before candidates are
+    // built. Handled so a future candidate source cannot fall through
+    // to movePieceStep with no piece.
+    const result =
+      action.power === "trap"
+        ? applyPickupTrap(state, player, action.position)
+        : applyTerraform(state, player, action.position);
+    return result.ok ? result.state : null;
+  }
   const result = movePieceStep(state, action.pieceId, action.to);
   return result.ok ? result.state : null;
 }
@@ -306,6 +318,13 @@ function sameAction(a: CpuAction, b: CpuAction): boolean {
   if (a.kind === "step" && b.kind === "step") {
     return (
       a.pieceId === b.pieceId && a.to.x === b.to.x && a.to.y === b.to.y
+    );
+  }
+  if (a.kind === "use-pickup" && b.kind === "use-pickup") {
+    return (
+      a.power === b.power &&
+      a.position.x === b.position.x &&
+      a.position.y === b.position.y
     );
   }
   return false;
@@ -335,6 +354,14 @@ export function chooseHardAction(
   };
   if (nerfTargets(view, player).length > 0) {
     push(chooseCpuAction(view, player, rng));
+  } else {
+    // A held power bypasses lookahead: lookahead scores a hidden trap
+    // at ~zero (it changes no score, steps, pieces, or tokens), so as a
+    // candidate it would never win — yet the approved heuristic is to
+    // always use an affordable power. Nerf-first still holds: this
+    // branch only runs when no nerf target exists.
+    const power = choosePickupPowerAction(view, player, rng);
+    if (power) return power;
   }
   const scoring = chooseScoringStep(view, player, rng);
   if (scoring) push({ kind: "step", ...scoring });

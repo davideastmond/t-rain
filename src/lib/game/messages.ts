@@ -8,11 +8,13 @@
 import {
   MAX_NEUTRAL_TRAPS,
   MAX_POINTS_PER_PIECE_PER_TURN,
+  PICKUP_POWER_COST,
   PIECES_PER_PLAYER,
   TRAPS_PER_PLAYER,
 } from "./constants";
 import type { MoveError } from "./movement";
 import type { NerfError } from "./nerf";
+import type { PickupPowerError } from "./pickups";
 import type { SetupError } from "./setup";
 import type { PlayerId } from "./types";
 
@@ -49,6 +51,14 @@ export const NERF_ERROR_MESSAGES: Record<NerfError, string> = {
   "insufficient-points": "A nerf costs 3 movement points from the pool.",
   "invalid-target":
     "Pick an active enemy piece next to one of your active pieces.",
+};
+
+export const PICKUP_POWER_ERROR_MESSAGES: Record<PickupPowerError, string> = {
+  "wrong-phase": "Pickup powers can only be used while the game is being played.",
+  "not-your-turn": "It's not your turn.",
+  "no-power": "You don't hold that power right now.",
+  "insufficient-points": `Using a power costs ${PICKUP_POWER_COST} movement points from the pool.`,
+  "invalid-target": "That tile can't take this power.",
 };
 
 export function playerLabel(player: PlayerId): string {

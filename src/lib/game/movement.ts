@@ -35,6 +35,7 @@ import {
   TERRAIN_INFO,
   type GameState,
   type MysteryBoxOutcome,
+  type PickupPowerKind,
   type Piece,
   type Position,
 } from "./types";
@@ -63,6 +64,8 @@ export interface StepOutcome {
   scored: boolean;
   /** The mystery box outcome when this step collected one, else null. */
   box: MysteryBoxOutcome | null;
+  /** The pickup power this step collected, else null. */
+  pickup: PickupPowerKind | null;
   /**
    * Opponent traps this step revealed to the moving player via trap
    * sense (POWERUPS_SPEC.md §6) — on the collection step (sensed at the
@@ -195,15 +198,20 @@ export function legalStepTargets(state: GameState, pieceId: string): Position[] 
  *    bridge, or trap sense, or booby-traps the piece (eliminated, like
  *    a trap). A box tile never holds a trap, so steps 2 and 3 can't
  *    coincide.
- * 4. Trap sense resolves after the box: a piece that just rolled it
+ * 4. A pickup power on the destination is collected on entry: it
+ *    leaves the board and enters the mover's held powers for this turn
+ *    (PICKUP_POWERS_SPEC.md). Placement excludes trap tiles, box tiles,
+ *    and goal rows, so collection can never coincide with a trap
+ *    firing, a box roll, or scoring.
+ * 5. Trap sense resolves after the box: a piece that just rolled it
  *    senses at the box tile, and a piece already holding it senses at
  *    its new position after every step — the opponent traps on the
  *    four orthogonally adjacent tiles are revealed to its owner for
  *    good (see senseAdjacentTraps). Revealing never disarms.
- * 5. Otherwise, if the destination is the piece's goal row, it scores.
+ * 6. Otherwise, if the destination is the piece's goal row, it scores.
  *    (A water tile never scores, even on the goal row — the crossing
  *    only counts once the piece reaches land.)
- * 6. Winning and losing are checked immediately: reaching PIECES_TO_WIN
+ * 7. Winning and losing are checked immediately: reaching PIECES_TO_WIN
  *    scored wins; dropping below PIECES_TO_WIN pieces still able to score
  *    (active + already scored) loses on the spot.
  */
@@ -245,6 +253,26 @@ export function movePieceStep(
 
   const eliminated = trapped || boxOutcome === "booby-trap";
   const scored = !eliminated && !enteredWater && to.y === GOAL_ROW[piece.owner];
+
+  // Pickup power collection, on entry like boxes (see the doc comment
+  // above: placement exclusions make coincidences impossible, and the
+  // !eliminated guard keeps it safe regardless).
+  const pickupIndex = state.pickups.findIndex((pickup) =>
+    samePosition(pickup.position, to),
+  );
+  const collectsPickup = !eliminated && pickupIndex >= 0;
+  const pickups = collectsPickup
+    ? state.pickups.filter((_, i) => i !== pickupIndex)
+    : state.pickups;
+  const heldPowers = collectsPickup
+    ? {
+        ...state.heldPowers,
+        [piece.owner]: [
+          ...state.heldPowers[piece.owner],
+          state.pickups[pickupIndex].kind,
+        ],
+      }
+    : state.heldPowers;
 
   const pieces = state.pieces.map((p) => {
     if (p.id !== pieceId) return p;
@@ -344,6 +372,8 @@ export function movePieceStep(
       mysteryBoxes,
       bonusPoints,
       revealedTraps,
+      pickups,
+      heldPowers,
       boxRolls: state.boxRolls + (collects ? 1 : 0),
       movementPointsLeft: state.movementPointsLeft - fromPool,
       spentThisTurn: {
@@ -351,7 +381,14 @@ export function movePieceStep(
         [pieceId]: (state.spentThisTurn[pieceId] ?? 0) + fromPool,
       },
     },
-    outcome: { cost, eliminated, scored, box: boxOutcome, revealed },
+    outcome: {
+      cost,
+      eliminated,
+      scored,
+      box: boxOutcome,
+      revealed,
+      pickup: collectsPickup ? state.pickups[pickupIndex].kind : null,
+    },
   };
 }
 
@@ -359,7 +396,8 @@ export function movePieceStep(
  * End the current player's turn: the other player takes over with a full
  * pool, and the per-piece tallies reset (unspent points are lost — no
  * banking). Tokens earned this turn flip from pending to usable, unused
- * mystery-box free points expire, and trap sense switches off (its
+ * mystery-box free points expire, held pickup powers expire (a power
+ * never survives into a later turn), and trap sense switches off (its
  * reveals, in state.revealedTraps, are permanent). A player may end
  * their turn at any point during play.
  *
@@ -413,6 +451,8 @@ export function endTurn(
       movementPointsLeft: MOVEMENT_POINTS_PER_TURN,
       spentThisTurn: {},
       bonusPoints: {},
+      // Held pickup powers expire with the turn that collected them.
+      heldPowers: { ...state.heldPowers, [player]: [] },
       // The turn just completed belongs to `player`: any nerf markers
       // on them expire now, while markers on the opponent (from this
       // player's own nerfs) survive until the opponent's turn ends.
