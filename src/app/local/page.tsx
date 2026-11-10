@@ -88,13 +88,14 @@ import {
 import {
   ALL_CHARACTERS,
   applySetup,
-  autoPlaceSetup,
   canPlacePieceAt,
   canPlaceTrapAt,
   createGame,
+  fillSetupDraft,
   isInPieceZone,
   isInTrapZone,
 } from "@/lib/game/setup";
+import { suggestChokeTraps } from "@/lib/game/setup-choke";
 import {
   type CharacterId,
   type GameState,
@@ -181,6 +182,11 @@ export default function LocalGamePage() {
     Partial<Record<CharacterId, Position>>
   >({});
   const [draftTraps, setDraftTraps] = useState<Position[]>([]);
+  /** Draft snapshot from before the last bulk fill/suggest, for Undo. */
+  const [preBulkDraft, setPreBulkDraft] = useState<{
+    pieces: Partial<Record<CharacterId, Position>>;
+    traps: Position[];
+  } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   /** Nerf targeting mode: red highlights, clicks execute nerfs. */
@@ -227,6 +233,7 @@ export default function LocalGamePage() {
   const setupComplete =
     draftPieceCount === PIECES_PER_PLAYER &&
     draftTraps.length === TRAPS_PER_PLAYER;
+  const draftEmpty = draftPieceCount === 0 && draftTraps.length === 0;
 
   // What the board draws: your drafts while you are placing, the real game
   // pieces once applied. North's untriggered traps are filtered out here —
@@ -445,19 +452,52 @@ export default function LocalGamePage() {
       return;
     }
     setGame(result.state);
+    setPreBulkDraft(null);
     setMessage("Your setup is locked in. Start the game when you're ready.");
   }
 
-  function autoPlaceMine() {
-    const result = autoPlaceSetup(game, LOCAL_PLAYER);
-    if (!result.ok) {
-      setMessage(SETUP_ERROR_MESSAGES[result.error]);
-      return;
-    }
-    setGame(result.state);
-    setDraftPieces({});
-    setDraftTraps([]);
-    setMessage("Auto-placed. Start the game when you're ready.");
+  /**
+   * Auto-place the rest: fill the draft's missing pieces and traps at
+   * random, keeping everything placed by hand. The draft stays a draft,
+   * so the player can undo the fill or keep editing before locking in.
+   */
+  function fillMine() {
+    setPreBulkDraft({ pieces: draftPieces, traps: draftTraps });
+    const filled = fillSetupDraft(game, LOCAL_PLAYER, draftPieces, draftTraps);
+    setDraftPieces(filled.pieces);
+    setDraftTraps(filled.traps);
+    playSound("place");
+    setMessage(
+      draftEmpty
+        ? "Auto-placed — lock in when you're happy with it, or Undo to start over."
+        : "Auto-placed the rest — your pieces and traps stay where you put them.",
+    );
+  }
+
+  /** Restore the draft from before the last bulk fill/suggest. */
+  function undoBulk() {
+    if (!preBulkDraft) return;
+    setDraftPieces(preBulkDraft.pieces);
+    setDraftTraps(preBulkDraft.traps);
+    setPreBulkDraft(null);
+    setMessage("Undone — back to your draft.");
+  }
+
+  /**
+   * Suggest a trap layout: the choke ranking's traps for the pieces
+   * placed so far. Replaces the draft traps (Undo brings them back);
+   * pieces are untouched.
+   */
+  function suggestTrapsMine() {
+    setPreBulkDraft({ pieces: draftPieces, traps: draftTraps });
+    const piecePositions = ALL_CHARACTERS.filter((c) => draftPieces[c]).map(
+      (c) => draftPieces[c]!,
+    );
+    setDraftTraps(suggestChokeTraps(game, LOCAL_PLAYER, piecePositions));
+    playSound("place");
+    setMessage(
+      "Suggested trap spots on the board's narrow crossings — Undo brings back your traps.",
+    );
   }
 
   function startGame() {
@@ -991,20 +1031,46 @@ export default function LocalGamePage() {
             type="button"
             onClick={() => {
               setDraftPieces({});
+              setMessage(null);
+            }}
+            className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
+          >
+            Clear pieces
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setDraftTraps([]);
               setMessage(null);
             }}
             className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
           >
-            Clear
+            Clear traps
           </button>
           <button
             type="button"
-            onClick={autoPlaceMine}
+            onClick={fillMine}
+            disabled={setupComplete}
+            className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            🎲 {draftEmpty ? "Auto-place mine" : "Auto-place the rest"}
+          </button>
+          <button
+            type="button"
+            onClick={suggestTrapsMine}
             className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
           >
-            🎲 Auto-place mine
+            💣 Suggest traps
           </button>
+          {preBulkDraft && (
+            <button
+              type="button"
+              onClick={undoBulk}
+              className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
+            >
+              ↩ Undo
+            </button>
+          )}
           <button
             type="button"
             onClick={applyMine}
