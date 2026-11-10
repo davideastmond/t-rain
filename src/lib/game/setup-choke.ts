@@ -22,7 +22,7 @@ import {
   SETUP_ROWS,
   TRAPS_PER_PLAYER,
 } from "./constants";
-import { createSeededRng } from "./rng";
+import { createSeededRng, type SeededRng } from "./rng";
 import {
   ALL_CHARACTERS,
   applySetup,
@@ -124,49 +124,34 @@ export function chokeScores(
   return scores;
 }
 
+// Fisher–Yates shuffle: every ordering of the candidates equally likely.
+function shuffledWith<T>(rng: SeededRng, items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 /**
- * Choke-point setup: random pieces (as `autoPlaceSetup`), traps by
- * ordered fill — CHOKE_TRAPS from the choke ranking, then
- * CHOKE_GOAL_TRAPS goal-row tiles, then random spread until the quota
- * is full. Submitted through `applySetup`, so every existing check
- * (zone, water, boxes, piece overlap, neutral cap) still applies.
- * Deterministic: same seed, same placement.
+ * The choke trap layout, given the tiles the player's pieces sit on:
+ * CHOKE_TRAPS from the choke ranking, then CHOKE_GOAL_TRAPS goal-row
+ * tiles, then random spread until the quota is full. Piece tiles are
+ * skipped, and every candidate still passes `canPlaceTrapAt` (zone,
+ * water, boxes, neutral cap). Deterministic for a given rng stream.
  */
-export function chooseChokeSetup(
+function chokeTrapPositions(
   state: GameState,
   player: PlayerId,
-): ApplySetupResult {
-  const rng = createSeededRng(state.seed + (player === "north" ? 101 : 202));
-
-  function shuffled<T>(items: T[]): T[] {
-    const result = [...items];
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
-  }
-
-  // Pieces first, exactly as autoPlaceSetup (same rng stream order).
-  const pieceCandidates = shuffled(
-    state.tiles
-      .filter(
-        (tile) =>
-          isInPieceZone(player, tile.position) &&
-          TERRAIN_INFO[tile.terrain].passable,
-      )
-      .map((tile) => tile.position),
-  );
-  const piecePlacements = ALL_CHARACTERS.map((character, i) => ({
-    character,
-    position: pieceCandidates[i],
-  }));
-  const pieceKeys = new Set(piecePlacements.map((p) => key(p.position)));
-
-  // Traps: shuffle first so ranking ties resolve by the setup rng
-  // (stable sort below keeps shuffled order among equal scores).
+  rng: SeededRng,
+  pieceKeys: Set<string>,
+): Position[] {
+  // Shuffle first so ranking ties resolve by the setup rng (stable
+  // sort below keeps shuffled order among equal scores).
   const scores = chokeScores(state, player);
-  const zoneTiles = shuffled(
+  const zoneTiles = shuffledWith(
+    rng,
     state.tiles.filter(
       (tile) =>
         isInTrapZone(player, tile.position) &&
@@ -203,5 +188,57 @@ export function chooseChokeSetup(
     tryAdd(tile.position);
   }
 
+  return traps;
+}
+
+/**
+ * Choke-point setup: random pieces (as `autoPlaceSetup`), traps by
+ * ordered fill — CHOKE_TRAPS from the choke ranking, then
+ * CHOKE_GOAL_TRAPS goal-row tiles, then random spread until the quota
+ * is full. Submitted through `applySetup`, so every existing check
+ * (zone, water, boxes, piece overlap, neutral cap) still applies.
+ * Deterministic: same seed, same placement.
+ */
+export function chooseChokeSetup(
+  state: GameState,
+  player: PlayerId,
+): ApplySetupResult {
+  const rng = createSeededRng(state.seed + (player === "north" ? 101 : 202));
+
+  // Pieces first, exactly as autoPlaceSetup (same rng stream order).
+  const pieceCandidates = shuffledWith(
+    rng,
+    state.tiles
+      .filter(
+        (tile) =>
+          isInPieceZone(player, tile.position) &&
+          TERRAIN_INFO[tile.terrain].passable,
+      )
+      .map((tile) => tile.position),
+  );
+  const piecePlacements = ALL_CHARACTERS.map((character, i) => ({
+    character,
+    position: pieceCandidates[i],
+  }));
+  const pieceKeys = new Set(piecePlacements.map((p) => key(p.position)));
+  const traps = chokeTrapPositions(state, player, rng, pieceKeys);
+
   return applySetup(state, player, piecePlacements, traps);
+}
+
+/**
+ * Suggest a trap layout for a draft: the choke ranking's traps, for the
+ * pieces the player has placed so far (`piecePositions`). Returns a
+ * fresh set of trap positions — the caller replaces the draft traps
+ * with it (the player's old traps come back with Undo). Pieces are
+ * untouched. Deterministic: same seed and same pieces, same suggestion.
+ */
+export function suggestChokeTraps(
+  state: GameState,
+  player: PlayerId,
+  piecePositions: Position[],
+): Position[] {
+  const rng = createSeededRng(state.seed + (player === "north" ? 101 : 202));
+  const pieceKeys = new Set(piecePositions.map((p) => key(p)));
+  return chokeTrapPositions(state, player, rng, pieceKeys);
 }

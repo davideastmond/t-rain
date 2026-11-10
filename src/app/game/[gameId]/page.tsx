@@ -61,9 +61,11 @@ import {
   ALL_CHARACTERS,
   canPlacePieceAt,
   canPlaceTrapAt,
+  fillSetupDraft,
   isInPieceZone,
   isInTrapZone,
 } from "@/lib/game/setup";
+import { suggestChokeTraps } from "@/lib/game/setup-choke";
 import type { SetupError } from "@/lib/game/setup";
 import type { NetEvent } from "@/lib/net/store";
 import type {
@@ -239,6 +241,11 @@ function GameClient() {
     Partial<Record<CharacterId, Position>>
   >({});
   const [draftTraps, setDraftTraps] = useState<Position[]>([]);
+  /** Draft snapshot from before the last bulk fill/suggest, for Undo. */
+  const [preBulkDraft, setPreBulkDraft] = useState<{
+    pieces: Partial<Record<CharacterId, Position>>;
+    traps: Position[];
+  } | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   const [forfeitArmed, setForfeitArmed] = useState(false);
   /** Nerf targeting mode: red highlights, clicks execute nerfs. */
@@ -521,6 +528,44 @@ function GameClient() {
   const setupComplete =
     draftPieceCount === PIECES_PER_PLAYER &&
     draftTraps.length === TRAPS_PER_PLAYER;
+  const draftEmpty = draftPieceCount === 0 && draftTraps.length === 0;
+
+  /**
+   * Auto-place the rest: fill the draft's missing pieces and traps at
+   * random, keeping everything placed by hand. Client-side only — the
+   * draft is still a draft until it is locked in.
+   */
+  function fillDraft() {
+    if (!netState || !seat) return;
+    setPreBulkDraft({ pieces: draftPieces, traps: draftTraps });
+    const filled = fillSetupDraft(netState, seat, draftPieces, draftTraps);
+    setDraftPieces(filled.pieces);
+    setDraftTraps(filled.traps);
+    playSound("place");
+  }
+
+  /** Restore the draft from before the last bulk fill/suggest. */
+  function undoBulk() {
+    if (!preBulkDraft) return;
+    setDraftPieces(preBulkDraft.pieces);
+    setDraftTraps(preBulkDraft.traps);
+    setPreBulkDraft(null);
+  }
+
+  /**
+   * Suggest a trap layout: the choke ranking's traps for the pieces
+   * placed so far. Replaces the draft traps (Undo brings them back);
+   * pieces are untouched.
+   */
+  function suggestTraps() {
+    if (!netState || !seat) return;
+    setPreBulkDraft({ pieces: draftPieces, traps: draftTraps });
+    const piecePositions = ALL_CHARACTERS.filter((c) => draftPieces[c]).map(
+      (c) => draftPieces[c]!,
+    );
+    setDraftTraps(suggestChokeTraps(netState, seat, piecePositions));
+    playSound("place");
+  }
 
   function handleSetupClick(position: Position) {
     if (!netState || !seat || iSubmitted) return;
@@ -587,6 +632,7 @@ function GameClient() {
     if (data) {
       setDraftPieces({});
       setDraftTraps([]);
+      setPreBulkDraft(null);
       setSelectedCharacter("cat");
       setMode("pieces");
     }
@@ -913,12 +959,44 @@ function GameClient() {
             type="button"
             onClick={() => {
               setDraftPieces({});
+            }}
+            className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
+          >
+            Clear pieces
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setDraftTraps([]);
             }}
             className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
           >
-            Clear
+            Clear traps
           </button>
+          <button
+            type="button"
+            onClick={fillDraft}
+            disabled={setupComplete}
+            className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            🎲 {draftEmpty ? "Auto-place mine" : "Auto-place the rest"}
+          </button>
+          <button
+            type="button"
+            onClick={suggestTraps}
+            className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
+          >
+            💣 Suggest traps
+          </button>
+          {preBulkDraft && (
+            <button
+              type="button"
+              onClick={undoBulk}
+              className="rounded-full bg-neutral-800 px-4 py-1.5 text-sm transition hover:bg-neutral-700"
+            >
+              ↩ Undo
+            </button>
+          )}
           <button
             type="button"
             onClick={lockInSetup}
