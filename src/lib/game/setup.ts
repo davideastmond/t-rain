@@ -324,3 +324,98 @@ export function autoPlaceSetup(state: GameState, player: PlayerId): ApplySetupRe
 
   return applySetup(state, player, piecePlacements, trapPositions);
 }
+
+/**
+ * Fill in a setup draft: keep every piece and trap the player placed by
+ * hand, and randomly place only the ones still missing. This is what the
+ * "auto-place the rest" button runs — the draft stays a draft, so the
+ * player can undo the fill or keep editing before locking in.
+ *
+ * Deterministic: the same seed and the same draft always fill the same
+ * way, and an empty draft fills to exactly the placement `autoPlaceSetup`
+ * produces (same rng stream, same candidate order). Filled pieces avoid
+ * tiles where a draft trap already sits, and filled traps avoid piece
+ * tiles — an auto-filled setup never stacks a piece on a trap, the way
+ * `autoPlaceSetup` never does either. When the board is too crowded to
+ * complete the draft (not possible on a real board), it fills as much as
+ * fits and returns the partial draft.
+ */
+export function fillSetupDraft(
+  state: GameState,
+  player: PlayerId,
+  draftPieces: Partial<Record<CharacterId, Position>>,
+  draftTraps: Position[],
+): {
+  pieces: Partial<Record<CharacterId, Position>>;
+  traps: Position[];
+} {
+  const rng = createSeededRng(state.seed + (player === "north" ? 101 : 202));
+
+  // Fisher–Yates shuffle: every ordering of the candidates equally likely.
+  function shuffled<T>(items: T[]): T[] {
+    const result = [...items];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  const placedPiece = (p: Position | undefined): p is Position =>
+    Boolean(p);
+  const manualPieces = Object.values(draftPieces).filter(placedPiece);
+  const manualPieceKeys = new Set(
+    manualPieces.map((p) => tileIndex(p.x, p.y)),
+  );
+  const trapKeys = new Set(draftTraps.map((p) => tileIndex(p.x, p.y)));
+
+  // Pieces first, exactly as autoPlaceSetup: unplaced characters take the
+  // earliest shuffled candidates their own manual pieces and draft traps
+  // haven't already claimed.
+  const pieceCandidates = shuffled(
+    state.tiles
+      .filter(
+        (tile) =>
+          isInPieceZone(player, tile.position) &&
+          TERRAIN_INFO[tile.terrain].passable &&
+          !manualPieceKeys.has(tileIndex(tile.position.x, tile.position.y)) &&
+          !trapKeys.has(tileIndex(tile.position.x, tile.position.y)),
+      )
+      .map((tile) => tile.position),
+  );
+  const pieces: Partial<Record<CharacterId, Position>> = { ...draftPieces };
+  let nextCandidate = 0;
+  for (const character of ALL_CHARACTERS) {
+    if (pieces[character]) continue;
+    if (nextCandidate >= pieceCandidates.length) break;
+    pieces[character] = pieceCandidates[nextCandidate++];
+  }
+
+  // Traps: walk shuffled candidates in the trap zone, accepting each one
+  // the single-tile check allows (this is what keeps the neutral cap),
+  // skipping tiles where a piece now sits.
+  const pieceKeys = new Set(
+    Object.values(pieces)
+      .filter(placedPiece)
+      .map((p) => tileIndex(p.x, p.y)),
+  );
+  const trapCandidates = shuffled(
+    state.tiles
+      .filter(
+        (tile) =>
+          isInTrapZone(player, tile.position) &&
+          TERRAIN_INFO[tile.terrain].passable &&
+          !pieceKeys.has(tileIndex(tile.position.x, tile.position.y)),
+      )
+      .map((tile) => tile.position),
+  );
+  const traps = [...draftTraps];
+  for (const position of trapCandidates) {
+    if (traps.length >= TRAPS_PER_PLAYER) break;
+    if (canPlaceTrapAt(state, player, position, traps).ok) {
+      traps.push(position);
+    }
+  }
+
+  return { pieces, traps };
+}
