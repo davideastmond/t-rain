@@ -116,6 +116,7 @@ export type NewEvent =
       cost: number;
     }
   | { type: "trap-triggered"; position: Position; victimPieceId: string }
+  | { type: "shield-blocked"; position: Position; pieceId: string }
   | {
       type: "scored";
       pieceId: string;

@@ -34,6 +34,7 @@ export function scenarioGame(
       status: "active" as const,
       hasBridge: false,
       hasTrapSense: false,
+      hasShield: false,
     }));
   return {
     ...base,

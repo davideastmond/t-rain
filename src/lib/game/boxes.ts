@@ -5,8 +5,8 @@
 // generated with the board from the game seed, on their own RNG stream
 // so they never perturb board generation. A box is public, and only the
 // player whose zone it is *not* in may collect it: stepping onto its
-// tile rolls the contents (extra steps / bridge / trap sense / booby
-// trap) from a stream seeded by the game seed and the running roll
+// tile rolls the contents (extra steps / bridge / trap sense / shield /
+// booby trap) from a stream seeded by the game seed and the running roll
 // count, so seed + move history reproduces every roll exactly — local,
 // network, and battle replays all agree. Trap sense is a pure function
 // of state (trap positions + the sensing piece's path), so replays
@@ -17,6 +17,7 @@ import {
   BOARD_HEIGHT,
   BOX_BRIDGE_CHANCE,
   BOX_EXTRA_STEPS_CHANCE,
+  BOX_SHIELD_CHANCE,
   BOX_TRAP_SENSE_CHANCE,
   NEUTRAL_ROW,
   SETUP_ROWS,
@@ -88,6 +89,15 @@ export function rollMysteryBox(state: GameState): MysteryBoxOutcome {
     BOX_EXTRA_STEPS_CHANCE + BOX_BRIDGE_CHANCE + BOX_TRAP_SENSE_CHANCE
   ) {
     return "trap-sense";
+  }
+  if (
+    roll <
+    BOX_EXTRA_STEPS_CHANCE +
+      BOX_BRIDGE_CHANCE +
+      BOX_TRAP_SENSE_CHANCE +
+      BOX_SHIELD_CHANCE
+  ) {
+    return "shield";
   }
   return "booby-trap";
 }
