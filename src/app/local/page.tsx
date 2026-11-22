@@ -132,6 +132,8 @@ function boxMessage(who: string, box: MysteryBoxOutcome): string {
       return `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`;
     case "trap-sense":
       return `🎁 ${who} opened a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`;
+    case "shield":
+      return `🎁 ${who} opened a mystery box: 🛡️ shield! It eats the next trap or nerf.`;
     case "booby-trap":
       return `🎁 ${who} opened a mystery box — 💥 booby trap!`;
   }
@@ -248,6 +250,7 @@ export default function LocalGamePage() {
       status: "active" as const,
       hasBridge: false,
       hasTrapSense: false,
+      hasShield: false,
     }));
   }, [game.pieces, southApplied, draftPieces]);
 
@@ -676,6 +679,14 @@ export default function LocalGamePage() {
         (result.state.phase === "finished"
           ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}!`
           : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.${earnedToken ? " +1 ⚡ nerf token (usable next turn)." : ""}`) +
+          (result.outcome.shieldBlocked
+            ? ` 🛡️ Its shield absorbed the goal-row trap — the trap is spent.`
+            : "") +
+          revealNote(result.outcome.revealed),
+      );
+    } else if (result.outcome.shieldBlocked) {
+      setMessage(
+        `🛡️ ${who}'s shield absorbed the trap! The trap is spent.` +
           revealNote(result.outcome.revealed),
       );
     } else if (result.outcome.box) {
@@ -856,10 +867,15 @@ export default function LocalGamePage() {
         }
       } else if (result.outcome.scored) {
         setMessage(
-          result.state.phase === "finished"
+          (result.state.phase === "finished"
             ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}! North wins.`
-            : `🎉 ${who} crossed! North: ${result.state.scores.north}/${PIECES_TO_WIN}.`,
+            : `🎉 ${who} crossed! North: ${result.state.scores.north}/${PIECES_TO_WIN}.`) +
+            (result.outcome.shieldBlocked
+              ? ` 🛡️ Its shield absorbed the goal-row trap — the trap is spent.`
+              : ""),
         );
+      } else if (result.outcome.shieldBlocked) {
+        setMessage(`🛡️ ${who}'s shield absorbed the trap! The trap is spent.`);
       } else if (result.outcome.box) {
         setMessage(boxMessage(who, result.outcome.box));
       } else {
@@ -1245,6 +1261,7 @@ export default function LocalGamePage() {
                       <> + {game.bonusPoints[selectedPiece.id]}🎁 free</>
                     )}
                     {selectedPiece.hasTrapSense && <> · 🔍 trap sense</>}
+                    {selectedPiece.hasShield && <> · 🛡️ shield</>}
                   </>
                 )}
                 {nerfArmed && (
