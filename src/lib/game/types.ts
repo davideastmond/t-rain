@@ -19,7 +19,7 @@ export type TerrainType = "plains" | "forest" | "water";
  * when a game is created and applies to every tile. Biomes only change how
  * terrain is *drawn* (colours); they never change movement rules.
  */
-export type BiomeId = "grass" | "desert" | "ice";
+export type BiomeId = "grass" | "desert" | "ice" | "volcano";
 
 /**
  * The 15 characters each player starts with — one of each, same set on both
