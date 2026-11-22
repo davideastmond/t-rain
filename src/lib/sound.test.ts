@@ -22,6 +22,7 @@ function outcome(patch: Partial<StepOutcome>): StepOutcome {
   return {
     cost: 1,
     eliminated: false,
+    shieldBlocked: false,
     scored: false,
     box: null,
     revealed: [],
@@ -58,6 +59,10 @@ describe("soundForStepOutcome priority", () => {
     expect(
       soundForStepOutcome(outcome({ box: "extra-steps", scored: true })),
     ).toBe("box");
+  });
+
+  it("plays trap for a shield-blocked step, even though the piece survives", () => {
+    expect(soundForStepOutcome(outcome({ shieldBlocked: true }))).toBe("trap");
   });
 
   it("plays score, then plain move", () => {
@@ -110,6 +115,13 @@ describe("netEventSounds", () => {
         "south",
       ),
     ).toEqual([{ name: "score", soft: false, delayMs: 0 }]);
+    expect(
+      netEventSounds(
+        [step, event({ type: "shield-blocked", position: { x: 0, y: 26 }, pieceId: "south-cat" })],
+        state,
+        "south",
+      ),
+    ).toEqual([{ name: "trap", soft: false, delayMs: 0 }]);
   });
 
   it("still plays a step when the terminal event is for another piece", () => {
@@ -128,10 +140,14 @@ describe("netEventSounds", () => {
     ]);
   });
 
-  it("maps trap, score, and drown with the volume rule", () => {
+  it("maps trap, score, shield, and drown with the volume rule", () => {
     const cases: Array<[NetEvent, QueuedSound]> = [
       [
         event({ type: "trap-triggered", position: { x: 0, y: 26 }, victimPieceId: "north-cat" }),
+        { name: "trap", soft: true, delayMs: 0 },
+      ],
+      [
+        event({ type: "shield-blocked", position: { x: 0, y: 26 }, pieceId: "north-cat" }),
         { name: "trap", soft: true, delayMs: 0 },
       ],
       [

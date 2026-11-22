@@ -10,6 +10,7 @@ import {
   BOARD_WIDTH,
   BOX_BRIDGE_CHANCE,
   BOX_EXTRA_STEPS_CHANCE,
+  BOX_SHIELD_CHANCE,
   BOX_TRAP_SENSE_CHANCE,
   EXTRA_STEPS_POINTS,
   MAX_NEUTRAL_TRAPS,
@@ -161,12 +162,20 @@ export default function RulesPage() {
             good — but they stay live, so don&apos;t step on one later
           </li>
           <li>
+            <strong className="text-neutral-100">Shield</strong> (
+            {Math.round(BOX_SHIELD_CHANCE * 100)}%) — the piece gains a
+            shield that eats the next trap or nerf aimed at it, then
+            it&apos;s gone. A trap it steps on fires and is spent; a
+            shielded piece can&apos;t be nerfed at all
+          </li>
+          <li>
             <strong className="text-neutral-100">Booby trap</strong> (
             {Math.round(
               (1 -
                 BOX_EXTRA_STEPS_CHANCE -
                 BOX_BRIDGE_CHANCE -
-                BOX_TRAP_SENSE_CHANCE) *
+                BOX_TRAP_SENSE_CHANCE -
+                BOX_SHIELD_CHANCE) *
                 100,
             )}
             %) — the collecting piece is eliminated
