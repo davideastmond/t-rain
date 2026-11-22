@@ -17,7 +17,7 @@ import {
 import { createSeededRng, type SeededRng } from "./rng";
 import { TERRAIN_INFO, type BiomeId, type Position, type TerrainType, type Tile } from "./types";
 
-const BIOMES: BiomeId[] = ["grass", "desert", "ice"];
+const BIOMES: BiomeId[] = ["grass", "desert", "ice", "volcano"];
 
 /** What generateBoard returns: the tiles, and the biome the seed picked for this game. */
 export interface GeneratedBoard {

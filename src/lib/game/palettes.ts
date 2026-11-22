@@ -62,11 +62,18 @@ function waves(opacity: string): string {
   );
 }
 
-/** Angular hairline cracks, for the frozen lake. */
-function cracks(): string {
+/**
+ * Angular hairline cracks, for the frozen lake — and, in pale yellow,
+ * the glowing fissures in lava.
+ */
+function cracks(
+  stroke = "white",
+  opacity = "0.4",
+  width = "1",
+): string {
   return texture(
     `<path d='M3 3 L9 9 L6 17 M15 2 L13 10 L19 15 M21 21 L17 16' ` +
-      `fill='none' stroke='white' stroke-opacity='0.4' stroke-width='1'/>`,
+      `fill='none' stroke='${stroke}' stroke-opacity='${opacity}' stroke-width='${width}'/>`,
   );
 }
 
@@ -178,6 +185,24 @@ export const BIOME_PALETTES: Record<BiomeId, BiomePalette> = {
       plains: "Snow",
       forest: "Snowy pine",
       water: "Frozen lake",
+    },
+  },
+  volcano: {
+    label: "Volcano",
+    colors: {
+      plains: "#c9c9ce",
+      forest: "#3a3a40",
+      water: "#ea580c",
+    },
+    textures: {
+      plains: dots("#52525b", "0.28", SCATTER),
+      forest: dots("#fb923c", "0.55", [...SCATTER, [12, 11, 1.4]]),
+      water: cracks("#ffe08a", "0.55", "1.2"),
+    },
+    terrainLabels: {
+      plains: "Ash",
+      forest: "Charred forest",
+      water: "Lava",
     },
   },
 };

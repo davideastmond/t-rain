@@ -74,7 +74,9 @@ describe("generateBoard", () => {
 
   it("picks a valid biome", () => {
     for (let seed = 0; seed < 20; seed++) {
-      expect(["grass", "desert", "ice"]).toContain(generateBoard(seed).biome);
+      expect(["grass", "desert", "ice", "volcano"]).toContain(
+        generateBoard(seed).biome,
+      );
     }
   });
 

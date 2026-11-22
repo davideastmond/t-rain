@@ -75,7 +75,8 @@ export default function RulesPage() {
       <Section title="The board">
         <p>
           {BOARD_WIDTH}×{BOARD_HEIGHT} tiles, with a neutral row in the
-          middle. Each game gets one biome theme (grass, desert, or ice) —
+          middle. Each game gets one biome theme (grass, desert, ice, or
+          volcano) —
           cosmetic only. Terrain matters:
         </p>
         <ul className="list-disc pl-6">

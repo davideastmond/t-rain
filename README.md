@@ -17,7 +17,7 @@ penguin, and more — but they're all identical in how they move, so the
 game is pure tactics.
 
 **The board.** 30 × 31 tiles with a neutral row in the middle. Every game
-gets one cosmetic biome — grass, desert, or ice — but the terrain itself
+gets one cosmetic biome — grass, desert, ice, or volcano — but the terrain itself
 always matters:
 
 - **Plains** — costs 1 movement point to enter.
