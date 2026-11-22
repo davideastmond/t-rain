@@ -60,6 +60,12 @@ export interface StepOutcome {
   cost: number;
   /** True when the step ended on an opponent's trap: the piece is gone. */
   eliminated: boolean;
+  /**
+   * True when this step's trap fired but the piece's shield absorbed
+   * it: the trap is spent, the piece survives (and can still score off
+   * a goal-row trap). False otherwise — including ordinary trap kills.
+   */
+  shieldBlocked: boolean;
   /** True when the step reached the goal row: the piece scored. */
   scored: boolean;
   /** The mystery box outcome when this step collected one, else null. */
@@ -241,6 +247,11 @@ export function movePieceStep(
   );
   const trapped = trapIndex >= 0;
 
+  // A shield eats the trap: it fires and is consumed, the piece
+  // survives, the shield is gone. The trap's `triggered` flag is still
+  // set below, so the spent trap becomes public like any fired trap.
+  const shieldBlocked = trapped && piece.hasShield;
+
   // Mystery box collection, on entry like traps. For the home player the
   // box is inert; only its collector rolls.
   const box = mysteryBoxAt(state, to);
@@ -251,7 +262,8 @@ export function movePieceStep(
     boxCollector(to) === piece.owner;
   const boxOutcome = collects ? rollMysteryBox(state) : null;
 
-  const eliminated = trapped || boxOutcome === "booby-trap";
+  const eliminated =
+    (trapped && !shieldBlocked) || boxOutcome === "booby-trap";
   const scored = !eliminated && !enteredWater && to.y === GOAL_ROW[piece.owner];
 
   // Pickup power collection, on entry like boxes (see the doc comment
@@ -288,6 +300,11 @@ export function movePieceStep(
       // turn; endTurn switches it off. Nothing else clears it — the
       // piece keeps sensing after every step it takes this turn.
       hasTrapSense: p.hasTrapSense || boxOutcome === "trap-sense",
+      // Collecting a shield arms it; stepping on a trap spends it
+      // (see shieldBlocked above). Nothing else clears it — unlike
+      // trap sense it survives endTurn and lasts until used.
+      hasShield:
+        (p.hasShield && !shieldBlocked) || boxOutcome === "shield",
     };
   });
   const traps =
@@ -384,6 +401,7 @@ export function movePieceStep(
     outcome: {
       cost,
       eliminated,
+      shieldBlocked,
       scored,
       box: boxOutcome,
       revealed,
