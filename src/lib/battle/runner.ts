@@ -20,6 +20,7 @@ import { tileIndex } from "../game/board";
 import {
   BOX_BRIDGE_CHANCE,
   BOX_EXTRA_STEPS_CHANCE,
+  BOX_SHIELD_CHANCE,
   BOX_TRAP_SENSE_CHANCE,
   EXTRA_STEPS_POINTS,
   MAX_POINTS_PER_PIECE_PER_TURN,
@@ -44,7 +45,11 @@ import {
 } from "../game/movement";
 import { createGame } from "../game/setup";
 import { createSeededRng } from "../game/rng";
-import type { GameState, PlayerId } from "../game/types";
+import type {
+  GameState,
+  MysteryBoxOutcome,
+  PlayerId,
+} from "../game/types";
 import { BattleLog, type GameEndReason, type MoveEvent } from "./log";
 import {
   getSetupStrategy,
@@ -159,6 +164,7 @@ export function createBattle(
       boxExtraStepsChance: BOX_EXTRA_STEPS_CHANCE,
       boxBridgeChance: BOX_BRIDGE_CHANCE,
       boxTrapSenseChance: BOX_TRAP_SENSE_CHANCE,
+      boxShieldChance: BOX_SHIELD_CHANCE,
       extraStepsPoints: EXTRA_STEPS_POINTS,
       waterCrossCost: WATER_CROSS_COST,
       pickupPowerCost: PICKUP_POWER_COST,
@@ -234,6 +240,24 @@ function driverEndTurn(
   return drowned
     ? { drowned: { id: drowned.id, character: drowned.character } }
     : {};
+}
+
+/** Narration for a mystery box collection in the battle feed. Every
+    outcome gets its own line — the old chain fell through to the
+    extra-steps line for trap sense, which narrated it wrong. */
+function boxNarration(label: string, outcome: MysteryBoxOutcome): string {
+  switch (outcome) {
+    case "booby-trap":
+      return `🎁💥 ${label} opens a mystery box — booby trap! Eliminated.`;
+    case "bridge":
+      return `🎁 ${label} opens a mystery box: 🌉 bridge!`;
+    case "trap-sense":
+      return `🎁 ${label} opens a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`;
+    case "shield":
+      return `🎁 ${label} opens a mystery box: 🛡️ shield! It eats the next trap or nerf.`;
+    case "extra-steps":
+      return `🎁 ${label} opens a mystery box: +${EXTRA_STEPS_POINTS} free steps!`;
+  }
 }
 
 /**
@@ -348,9 +372,20 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
   if (result.outcome.pickup) {
     events.push({ kind: "pickup", power: result.outcome.pickup });
   }
-  if (result.outcome.eliminated && result.outcome.box !== "booby-trap") {
-    events.push({ kind: "trap", pos: [action.to.x, action.to.y], pieceEliminated: true });
-  } else if (result.outcome.scored) {
+  // A trap fired: either it killed the piece, or the piece's shield
+  // absorbed it. The trap is spent either way — and a shield-blocked
+  // goal-row step can still score, so trap and score are independent.
+  const trapFired =
+    result.outcome.shieldBlocked ||
+    (result.outcome.eliminated && result.outcome.box !== "booby-trap");
+  if (trapFired) {
+    events.push({
+      kind: "trap",
+      pos: [action.to.x, action.to.y],
+      pieceEliminated: result.outcome.eliminated,
+    });
+  }
+  if (result.outcome.scored) {
     events.push({ kind: "score", pieceId: action.pieceId, newScore: driver.state.scores[player] });
   }
   driver.log.push({
@@ -371,13 +406,10 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
   if (driver.state.phase === "finished") driver.finished = true;
 
   const label = `${side} ${piece.character}`;
+  const shieldLine = `🛡️ ${label}'s shield absorbs the trap at (${action.to.x}, ${action.to.y})! The trap is spent.`;
   const narrations = result.outcome.box
     ? [
-        result.outcome.box === "booby-trap"
-          ? `🎁💥 ${label} opens a mystery box — booby trap! Eliminated.`
-          : result.outcome.box === "bridge"
-            ? `🎁 ${label} opens a mystery box: 🌉 bridge!`
-            : `🎁 ${label} opens a mystery box: +${EXTRA_STEPS_POINTS} free steps!`,
+        boxNarration(label, result.outcome.box),
         ...(driver.finished ? ["That's attrition — game over."] : []),
       ]
     : result.outcome.eliminated
@@ -387,7 +419,9 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
         ]
       : result.outcome.scored
         ? [
-            // Collection resolves before scoring, so it narrates first.
+            // A shield-blocked goal-row trap resolves before scoring,
+            // so it narrates first — same as a pickup collection.
+            ...(result.outcome.shieldBlocked ? [shieldLine] : []),
             ...(result.outcome.pickup
               ? [
                   `✨ ${label} finds a pickup power: ${result.outcome.pickup === "trap" ? "extra trap" : "terraform"}!`,
@@ -395,11 +429,13 @@ export function battleStep(driver: BattleDriver): { narrations: string[]; done: 
               : []),
             `🎉 ${label} crosses! ${side}: ${driver.state.scores[player]}/${PIECES_TO_WIN}${driver.finished ? " — game over!" : ""}`,
           ]
-        : result.outcome.pickup
-          ? [
-              `✨ ${label} finds a pickup power: ${result.outcome.pickup === "trap" ? "extra trap" : "terraform"}!`,
-            ]
-          : [];
+        : result.outcome.shieldBlocked
+          ? [shieldLine]
+          : result.outcome.pickup
+            ? [
+                `✨ ${label} finds a pickup power: ${result.outcome.pickup === "trap" ? "extra trap" : "terraform"}!`,
+              ]
+            : [];
   return { narrations, done: driver.finished };
 }
 

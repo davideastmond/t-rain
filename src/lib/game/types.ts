@@ -92,6 +92,14 @@ export interface Piece {
    * GameState.revealedTraps) on collection and after each of its steps.
    */
   hasTrapSense: boolean;
+  /**
+   * True while the piece holds a mystery-box shield: set on collection,
+   * it eats the next trap or nerf aimed at the piece — one total, then
+   * it's gone. A shielded piece is not a valid nerf target, and a trap
+   * it steps on fires and is consumed without eliminating it. Unlike
+   * trap sense, nothing clears it at endTurn — it lasts until used.
+   */
+  hasShield: boolean;
 }
 
 /**
@@ -126,6 +134,7 @@ export type MysteryBoxOutcome =
   | "extra-steps"
   | "bridge"
   | "trap-sense"
+  | "shield"
   | "booby-trap";
 
 /**

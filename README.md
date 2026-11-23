@@ -43,7 +43,7 @@ on the goal row, where the trap resolves before scoring.
 only the _invader_ can collect it — step a piece onto the box in enemy
 territory to roll what's inside:
 
-- **Extra steps (40%)** — +2 free movement points for that piece, this
+- **Extra steps (30%)** — +2 free movement points for that piece, this
   turn only.
 - **Bridge (25%)** — the piece can cross one water tile, but it must
   reach land the same turn or it drowns, and a water tile never scores.
@@ -51,6 +51,9 @@ territory to roll what's inside:
   tiles next to that piece are revealed to you, on collection and after
   each of its steps. Revealed traps stay on your board for good — but
   they stay live, so don't step on one later.
+- **Shield (10%)** — the piece gains a shield that eats the next trap
+  or nerf aimed at it, then it's gone. A trap it steps on fires and is
+  spent; a shielded piece can't be nerfed at all.
 - **Booby trap (10%)** — the collecting piece is eliminated.
 
 **Pickup powers.** One more hidden item sits somewhere in the middle of

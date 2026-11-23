@@ -56,7 +56,12 @@ export function canNerf(
   if (state.movementPointsLeft < NERF_POOL_COST)
     return { ok: false, error: "insufficient-points" };
   const target = getPiece(state, targetPieceId);
-  if (!target || target.status !== "active" || target.owner === player) {
+  if (
+    !target ||
+    target.status !== "active" ||
+    target.owner === player ||
+    target.hasShield
+  ) {
     return { ok: false, error: "invalid-target" };
   }
   const inRange = state.pieces.some(
@@ -84,6 +89,7 @@ export function nerfTargets(state: GameState, player: PlayerId): Piece[] {
     (target) =>
       target.owner !== player &&
       target.status === "active" &&
+      !target.hasShield &&
       mine.some((piece) =>
         isOrthogonalNeighbor(piece.position, target.position),
       ),

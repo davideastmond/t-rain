@@ -1,4 +1,4 @@
-# T-rain — Mystery boxes (spec, v2)
+# T-rain — Mystery boxes (spec, v3)
 
 Status: v1 decided 2026-10-20 (ideation 2026-10-20, from the bonus-pickups
 suggestion in `suggestions.md`, which this spec supersedes) and implemented
@@ -6,6 +6,10 @@ suggestion in `suggestions.md`, which this spec supersedes) and implemented
 decided 2026-10-22: a fourth box outcome, trap sense (§6), and the roll
 distribution moves to 40 / 25 / 25 / 10.** Trap sense is not yet
 implemented; it follows the same shape: engine → local UI → network → CPU.
+**v3 amendment decided 2026-11-22: a fifth box outcome, shield (§7), and
+the roll distribution moves to 30 / 25 / 25 / 10 / 10.** The shield is
+single-piece and public: the collecting piece gains a shield that eats
+its next trap or nerf, announced on collection and marked 🛡️.
 
 ## 1. Why
 
@@ -29,9 +33,10 @@ just "race faster."
   One raid, one roll — no stacking questions ever arise.
 - The box's contents are **unknown until collected**. Stepping onto the
   box tile (entry, like a trap) collects it and rolls:
-  - **40% — Extra steps**
+  - **30% — Extra steps**
   - **25% — Water cross (bridge)**
   - **25% — Trap sense** (v2, §6)
+  - **10% — Shield** (v3, §7)
   - **10% — Booby trap**: the collecting piece is eliminated.
 - The box is consumed by the roll, whatever the outcome.
 
@@ -47,7 +52,7 @@ just "race faster."
 - A trap may **not** be placed on a mystery box tile (setup validation).
   Pieces are never placed on box tiles (boxes avoid the setup rows).
 
-## 4. Extra steps (40%)
+## 4. Extra steps (30%)
 
 - The **collecting piece** gains **+2 free movement points**, usable
   **this turn only**.
@@ -121,7 +126,33 @@ just "race faster."
   never holds a trap (§3), so the collection sensing can never
   coincide with a trap firing on the same tile.
 
-## 7. Booby trap (10%)
+## 7. Shield (10%) — v3
+
+- The **collecting piece** gains a **shield**: it eats the next trap
+  **or** the next nerf aimed at that piece — one total, whichever
+  comes first — then it's gone.
+- **Trap**: a trap the shielded piece steps on fires and is consumed
+  (its `triggered` flag is set, so it becomes public like any fired
+  trap), the piece survives, the shield is gone. A shield-blocked
+  goal-row trap still lets the piece score — the trap resolves before
+  scoring, as always.
+- **Nerf**: a shielded piece is **not a valid nerf target at all** —
+  the legality gate (`nerfTargets` / `canNerf`) excludes it, so neither
+  the UI nor the CPU can spend a token on one. A nerf never fizzles.
+- **Duration**: until used, across turns — like the bridge, not like
+  trap sense. Nothing clears it at endTurn.
+- **Visibility**: public. Collection is announced like every other box
+  outcome, and the piece shows a 🛡️ badge. A hidden shield would make
+  a nerf a lottery ticket — a token spent on nothing, with no way to
+  have known and no mechanic to discover it — so it stays visible.
+- **Scope**: single-piece only. A team-wide shield would need a clock
+  (or the opponent's nerf economy freezes outright) and would be
+  swingiest exactly when it matters most.
+- **Limits**: the shield does not protect against a booby-trap roll
+  (it is neither a trap nor a nerf) or against drowning. A pickup trap
+  is mechanically a trap, so the shield eats it too.
+
+## 8. Booby trap (10%)
 
 - The collecting piece is eliminated immediately; the box is consumed.
 - The elimination counts toward attrition normally.
@@ -129,7 +160,7 @@ just "race faster."
   box and its outcome are public), and it doesn't interact with the
   owner's trap count.
 
-## 8. Interactions with existing rules
+## 9. Interactions with existing rules
 
 - **Traps**: collection is on entry, mid-turn, like trap resolution; the
   turn continues after any box outcome (unless attrition ends the game).
@@ -137,8 +168,9 @@ just "race faster."
 - **Scoring**: boxes never sit on the goal row, so box-vs-score ordering
   never arises. A piece may collect and score in the same turn (e.g.
   extra-steps burst across the goal row) — normal scoring rules apply.
-- **Nerf**: unaffected. Box effects are not nerf tokens and vice versa.
-  A nerfed scout loses trap sense with the piece, but its reveals stay
+- **Nerf**: box effects are not nerf tokens and vice versa — except
+  the shield (§7), which makes its holder an invalid nerf target. A
+  nerfed scout loses trap sense with the piece, but its reveals stay
   known.
 - **Attrition**: booby-trap and drowning eliminations count.
 - **Determinism / network**: the roll is made by the engine from the
@@ -154,13 +186,14 @@ just "race faster."
   player only ever holds one box outcome, and a single roll grants
   exactly one outcome.
 
-## 9. Balance rationale
+## 10. Balance rationale
 
 - The box's price is the raid itself: a piece deep in enemy territory,
   walking trap country both ways, plus a 10% chance the trip ends it.
-  The reward distribution is deliberately swingy — 40% tempo (extra
+  The reward distribution is deliberately swingy — 30% tempo (extra
   steps), 25% map-breaking (bridge at a chokepoint can be worth more
-  than a piece), 25% information (trap sense — v2), 10% disaster.
+  than a piece), 25% information (trap sense), 10% protection
+  (shield — v3), 10% disaster.
   Extra steps stays the most common outcome because it is the only one
   that is always useful; bridge and trap sense are both conditional
   but potentially game-changing, so they split the rest evenly.
@@ -169,13 +202,18 @@ just "race faster."
   the scout can never become a multi-turn escort. The permanent
   reveals are the consolation floor — even a collector who arrives
   with no movement left learns the traps guarding the box exits.
+- Shield is balanced by being single-use and single-piece: it saves
+  one piece once, then it's gone — and because it's public, the
+  opponent simply doesn't waste a nerf on a shielded piece. The
+  holder can't choose when the opponent's traps fire, so the shield
+  is worth most as a safe runner, not as a guaranteed save.
 - Because each player gets at most one roll per game, a lucky roll is a
   highlight, not a snowball.
 - Extra steps being piece-level (not pool-level) is deliberate: the
   reward lands on the piece that took the risk, as a slingshot deeper
   or an escape — not as a diffuse +2 spent anywhere on the board.
 
-## 10. UI sketch (for the implementation PRs, no code here)
+## 11. UI sketch (for the implementation PRs, no code here)
 
 - Board: box tiles show 🎁. Collected boxes disappear.
 - Bridge holders show a 🌉 badge on the piece.
@@ -188,8 +226,11 @@ just "race faster."
   only (💣, as their own traps do); narration covers the public roll,
   and the collecting client adds its own reveal line from its state
   diff (never a shared event).
+- Shield (v3): the shielded piece shows a 🛡️ badge; collection is
+  narrated publicly, and a shield-blocked trap gets its own feed line
+  (local message, net event, battle log).
 
-## 11. CPU hook
+## 12. CPU hook
 
 - v1: the CPU does not seek boxes. It collects accidentally when its
   route crosses the eligible box, and benefits automatically where the
@@ -202,8 +243,13 @@ just "race faster."
   follow-up hook (pathfinding treats traps visible in the sanitized
   view as blocked); until then a CPU trap-sense roll reveals traps it
   does not yet use.
+- Shield (v3): the CPU benefits automatically where the engine models
+  the effect — shielded pieces are excluded from `nerfTargets`, so it
+  never wastes a token, and a shielded piece survives a trap it steps
+  on. v1 does not deliberately route a shielded piece through a trap,
+  and its nerf-hunt may still chase a shielded runner.
 
-## 12. Test plan (for the implementation PRs)
+## 13. Test plan (for the implementation PRs)
 
 - Generation: over many seeds, exactly one mirrored pair, placement
   constraints hold, deterministic per seed.
@@ -218,8 +264,8 @@ just "race faster."
 - Net: outcome events reach both players; sanitized views show boxes
   and bridge holders.
 - Replay: a logged game with box events replays to the same state.
-- Trap sense (v2): roll thresholds — extra steps < 0.40, bridge < 0.65,
-  trap sense < 0.90, booby trap otherwise; the collection snapshot and
+- Trap sense (v2): roll thresholds — extra steps < 0.30, bridge < 0.55,
+  trap sense < 0.80, shield < 0.90, booby trap otherwise; the collection snapshot and
   each later step by the sensing piece reveal orthogonally adjacent
   opponent traps (diagonals are not sensed, other pieces' steps do not
   sense); reveals persist past end of turn and the scout's elimination
@@ -227,12 +273,20 @@ just "race faster."
   fires when stepped on; sanitized views include the viewer's revealed
   traps and never the opponent's revealed set; the net event log gains
   no position-bearing reveal entry.
+- Shield (v3): collection arms it; a shielded piece stepping on a
+  trap consumes the trap and survives with the shield gone; a
+  shield-blocked goal-row trap still scores; shielded pieces are
+  excluded from nerf targets and `canNerf` rejects them; the shield
+  survives endTurn; the battle log records the trap event with
+  `pieceEliminated: false` and the shield box outcome; the net feed
+  narrates collection and the blocked trap.
 
-## 13. Tuning knobs
+## 14. Tuning knobs
 
-- Roll distribution (40 / 25 / 25 / 10).
+- Roll distribution (30 / 25 / 25 / 10 / 10).
 - Extra steps amount (+2).
 - Box count (one mirrored pair).
 - Water entry cost (1).
 - Trap sense duration (remainder of the collection turn) and shape
   (orthogonal, range 1).
+- Shield duration (until used) and scope (single-piece).

@@ -244,6 +244,7 @@ export function applySetup(
     status: "active",
     hasBridge: false,
     hasTrapSense: false,
+    hasShield: false,
   }));
   const newTraps: Trap[] = trapPositions.map((position) => ({
     owner: player,

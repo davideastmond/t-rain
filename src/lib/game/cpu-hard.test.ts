@@ -40,6 +40,7 @@ function piece(
     status: "active",
     hasBridge: false,
     hasTrapSense: false,
+    hasShield: false,
   };
 }
 
