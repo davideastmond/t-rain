@@ -77,12 +77,51 @@ describe("gameLink", () => {
   });
 
   it("throws when BASE_URL is unset", () => {
-    const original = process.env.BASE_URL;
+    const originalBase = process.env.BASE_URL;
+    const originalVercel = process.env.VERCEL_URL;
     try {
       delete process.env.BASE_URL;
+      delete process.env.VERCEL_URL;
       expect(() => gameLink("g1", "tok")).toThrow("BASE_URL");
     } finally {
-      if (original !== undefined) process.env.BASE_URL = original;
+      if (originalBase !== undefined) process.env.BASE_URL = originalBase;
+      if (originalVercel !== undefined)
+        process.env.VERCEL_URL = originalVercel;
+    }
+  });
+
+  it("falls back to VERCEL_URL when BASE_URL is unset", () => {
+    const originalBase = process.env.BASE_URL;
+    const originalVercel = process.env.VERCEL_URL;
+    try {
+      delete process.env.BASE_URL;
+      process.env.VERCEL_URL =
+        "t-rain-git-feature-xyz-davideastmond.vercel.app";
+      expect(gameLink("g1", "tok")).toBe(
+        "https://t-rain-git-feature-xyz-davideastmond.vercel.app/game/g1?t=tok",
+      );
+    } finally {
+      if (originalBase !== undefined) process.env.BASE_URL = originalBase;
+      if (originalVercel === undefined) delete process.env.VERCEL_URL;
+      else process.env.VERCEL_URL = originalVercel;
+    }
+  });
+
+  it("prefers BASE_URL over VERCEL_URL when both are set", () => {
+    const originalBase = process.env.BASE_URL;
+    const originalVercel = process.env.VERCEL_URL;
+    try {
+      process.env.BASE_URL = "https://example.com";
+      process.env.VERCEL_URL =
+        "t-rain-git-feature-xyz-davideastmond.vercel.app";
+      expect(gameLink("g1", "tok")).toBe(
+        "https://example.com/game/g1?t=tok",
+      );
+    } finally {
+      if (originalBase === undefined) delete process.env.BASE_URL;
+      else process.env.BASE_URL = originalBase;
+      if (originalVercel === undefined) delete process.env.VERCEL_URL;
+      else process.env.VERCEL_URL = originalVercel;
     }
   });
 });
