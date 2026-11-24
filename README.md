@@ -108,7 +108,9 @@ A few things testing taught us, baked into how the CPU plays:
 ![The T-rain home page: local game, CPU battle lab, and online game](https://github.com/davideastmond/t-rain/blob/dev/docs/home.png?raw=true)
 
 - **Local game** — against the CPU (Normal or Hard, picked before the
-  game starts), or a friend on the same device (hotseat).
+  game starts), or a friend on the same device (hotseat). Against the
+  CPU, your win/loss record per tier is kept in this browser, and
+  rematches swap seats.
 - **Online game** — create a game from the home page and share the invite
   link. The server holds the game state, your opponent's traps stay
   hidden, and turns sync automatically. First player is random.
