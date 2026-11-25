@@ -42,6 +42,9 @@ const MUTE_KEY = "train-muted";
     collection is an elimination first, so it plays the trap sound. */
 export function soundForStepOutcome(outcome: StepOutcome): SoundName {
   if (outcome.eliminated) return "trap";
+  // The trap fired even though the shield saved the piece — the trap
+  // sound marks the trap, and the narration carries the shield.
+  if (outcome.shieldBlocked) return "trap";
   if (outcome.box) return "box";
   if (outcome.scored) return "score";
   return "move";
@@ -80,6 +83,8 @@ export function netEventSounds(
   for (const event of events) {
     if (event.type === "trap-triggered") {
       terminalPieces.add(event.victimPieceId);
+    } else if (event.type === "shield-blocked") {
+      terminalPieces.add(event.pieceId);
     } else if (event.type === "scored" || event.type === "box-collected") {
       terminalPieces.add(event.pieceId);
     }
@@ -102,6 +107,15 @@ export function netEventSounds(
         out.push({
           name: "trap",
           soft: ownerOf(event.victimPieceId) !== seat,
+          delayMs: 0,
+        });
+        break;
+      case "shield-blocked":
+        // The trap fired even though the shield saved the piece — the
+        // trap sound marks the trap, same as local play.
+        out.push({
+          name: "trap",
+          soft: ownerOf(event.pieceId) !== seat,
           delayMs: 0,
         });
         break;

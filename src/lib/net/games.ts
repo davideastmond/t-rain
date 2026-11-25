@@ -74,12 +74,27 @@ export function createNetGame(): CreatedGame {
   return { record, tokens };
 }
 
-/** Relative per-seat link, e.g. /game/<id>?t=<token>. */
+/**
+ * The public origin game links are built from. An explicit BASE_URL
+ * wins (production, local dev against a tunnel); otherwise Vercel
+ * deployments fall back to VERCEL_URL, which Vercel sets at runtime
+ * to the deployment's own hostname — so a preview deployment's links
+ * point back at that preview, not at production. VERCEL_URL is
+ * hostname-only (no scheme), hence the https:// prefix.
+ */
+function baseUrl(): string | undefined {
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return undefined;
+}
+
+/** Absolute per-seat link, e.g. https://<origin>/game/<id>?t=<token>. */
 export function gameLink(gameId: string, token: string): string {
-  if (!process.env.BASE_URL) {
+  const base = baseUrl();
+  if (!base) {
     throw new Error("BASE_URL is not set or is undefined");
   }
-  return `${process.env.BASE_URL}/game/${gameId}?t=${token}`;
+  return `${base}/game/${gameId}?t=${token}`;
 }
 
 /**
@@ -116,6 +131,7 @@ export type NewEvent =
       cost: number;
     }
   | { type: "trap-triggered"; position: Position; victimPieceId: string }
+  | { type: "shield-blocked"; position: Position; pieceId: string }
   | {
       type: "scored";
       pieceId: string;

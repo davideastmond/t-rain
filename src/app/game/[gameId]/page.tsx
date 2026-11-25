@@ -140,6 +140,14 @@ function describeEvents(
         lines.push(`💥 ${who} stepped on a trap and was eliminated!`);
         break;
       }
+      case "shield-blocked": {
+        const piece = state.pieces.find((p) => p.id === event.pieceId);
+        const who = piece
+          ? `${CHARACTERS[piece.character].emoji} ${playerLabel(piece.owner)} ${CHARACTERS[piece.character].label}`
+          : "A piece";
+        lines.push(`🛡️ ${who}'s shield absorbed the trap! The trap is spent.`);
+        break;
+      }
       case "scored": {
         const piece = state.pieces.find((p) => p.id === event.pieceId);
         const who = piece
@@ -177,6 +185,10 @@ function describeEvents(
         } else if (event.outcome === "trap-sense") {
           lines.push(
             `🎁 ${who} opened a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`,
+          );
+        } else if (event.outcome === "shield") {
+          lines.push(
+            `🎁 ${who} opened a mystery box: 🛡️ shield! It eats the next trap or nerf.`,
           );
         } else {
           lines.push(
@@ -444,6 +456,7 @@ function GameClient() {
         status: "active" as const,
         hasBridge: false,
         hasTrapSense: false,
+        hasShield: false,
       }));
     }
     return netState.pieces;
@@ -1141,6 +1154,7 @@ function GameClient() {
                       <> + {netState.bonusPoints[selectedPiece.id]}🎁 free</>
                     )}
                     {selectedPiece.hasTrapSense && <> · 🔍 trap sense</>}
+                    {selectedPiece.hasShield && <> · 🛡️ shield</>}
                   </>
                 )}
                 {playing && netState.heldPowers[seat].length > 0 && (

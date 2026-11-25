@@ -76,13 +76,16 @@ export const PICKUP_POWER_COST = 3;
 export const MYSTERY_BOX_COUNT = 2;
 
 /** Chance a collected mystery box grants extra steps (POWERUPS_SPEC.md). */
-export const BOX_EXTRA_STEPS_CHANCE = 0.4;
+export const BOX_EXTRA_STEPS_CHANCE = 0.3;
 
 /** Chance a collected mystery box grants a bridge. */
 export const BOX_BRIDGE_CHANCE = 0.25;
 
-/** Chance a collected mystery box grants trap sense. The remainder booby-traps. */
+/** Chance a collected mystery box grants trap sense. */
 export const BOX_TRAP_SENSE_CHANCE = 0.25;
+
+/** Chance a collected mystery box grants a shield. The remainder booby-traps. */
+export const BOX_SHIELD_CHANCE = 0.1;
 
 /** Free movement points the extra-steps outcome grants the collecting piece. */
 export const EXTRA_STEPS_POINTS = 2;

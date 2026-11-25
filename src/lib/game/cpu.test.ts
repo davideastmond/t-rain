@@ -34,6 +34,7 @@ function piece(
     status: "active",
     hasBridge: false,
     hasTrapSense: false,
+    hasShield: false,
     ...patch,
   };
 }
@@ -406,6 +407,18 @@ describe("chooseCpuAction priority", () => {
       kind: "nerf",
       targetPieceId: "south-dog",
     });
+  });
+
+  it("never nerfs a shielded piece, even when it is the only adjacent target", () => {
+    const state = cpuGame(
+      [
+        CAT(10, 10),
+        piece("south-cat", "south", 10, 11, { hasShield: true }),
+      ],
+      { nerfTokens: { north: 1, south: 0 } },
+    );
+    // No valid nerf target, so the CPU falls through to racing.
+    expect(chooseCpuAction(state, "north", () => 0)?.kind).toBe("step");
   });
 
   it("hunts second when holding a token with nothing adjacent", () => {

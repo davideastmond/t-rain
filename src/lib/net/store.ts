@@ -42,6 +42,14 @@ export type NetEvent =
       victimPieceId: string;
     })
   | (NetEventBase & {
+      /** A shield absorbed a trap: the trap is spent, the piece
+          survives. Public — the shield itself was announced on
+          collection, and the spent trap is visible on the board. */
+      type: "shield-blocked";
+      position: Position;
+      pieceId: string;
+    })
+  | (NetEventBase & {
       type: "scored";
       pieceId: string;
       player: PlayerId;

@@ -202,6 +202,7 @@ describe("movePieceStep", () => {
     expect(result.outcome).toEqual({
       cost: 1,
       eliminated: false,
+      shieldBlocked: false,
       scored: false,
       box: null,
       revealed: [],
@@ -346,6 +347,57 @@ describe("movePieceStep", () => {
     const spentResult = movePieceStep(spent, CAT, { x: 5, y: 6 });
     expect(spentResult.ok).toBe(true);
     if (spentResult.ok) expect(spentResult.outcome.eliminated).toBe(false);
+  });
+
+  /** North-cat holding a shield, a south trap on the tile ahead. */
+  function shieldState() {
+    return setTerrain(
+      addTrap(
+        movePieceTo(scenarioGame(), CAT, { x: 5, y: 5 }, { hasShield: true }),
+        "south",
+        { x: 5, y: 6 },
+      ),
+      5,
+      6,
+      "plains",
+    );
+  }
+
+  it("shield absorbs a trap: the trap is spent, the piece survives, the shield is gone", () => {
+    const result = movePieceStep(shieldState(), CAT, { x: 5, y: 6 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.shieldBlocked).toBe(true);
+    expect(result.outcome.eliminated).toBe(false);
+    expect(result.outcome.scored).toBe(false);
+    expect(
+      result.state.pieces.find((p) => p.id === CAT)?.status,
+    ).toBe("active");
+    expect(
+      result.state.pieces.find((p) => p.id === CAT)?.hasShield,
+    ).toBe(false);
+    expect(result.state.traps[0].triggered).toBe(true);
+    expect(result.state.phase).toBe("playing");
+  });
+
+  it("shield: a shield-blocked goal-row trap still lets the piece score", () => {
+    const state = setTerrain(
+      addTrap(
+        movePieceTo(scenarioGame(), CAT, { x: 15, y: 29 }, { hasShield: true }),
+        "south",
+        { x: 15, y: 30 },
+      ),
+      15,
+      30,
+      "plains",
+    );
+    const result = movePieceStep(state, CAT, { x: 15, y: 30 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.shieldBlocked).toBe(true);
+    expect(result.outcome.scored).toBe(true);
+    expect(result.outcome.eliminated).toBe(false);
+    expect(result.state.scores.north).toBe(1);
   });
 
   it("scores on the goal row and earns a pending nerf token", () => {

@@ -9,7 +9,7 @@ import {
   senseAdjacentTraps,
 } from "./boxes";
 import { generateBoard } from "./board";
-import { movePieceStep } from "./movement";
+import { endTurn, movePieceStep } from "./movement";
 import {
   addTrap,
   movePieceTo,
@@ -22,7 +22,8 @@ import type { GameState } from "./types";
 // roll, trap sense, and collection through movePieceStep. The roll
 // thresholds are tested with hardcoded (seed, boxRolls) pairs whose
 // stream values were computed from the mulberry32 stream, not sampled:
-// extra-steps < 0.40, bridge < 0.65, trap-sense < 0.90, else booby-trap.
+// extra-steps < 0.30, bridge < 0.55, trap-sense < 0.80, shield < 0.90,
+// else booby-trap.
 
 const CAT = "north-cat";
 
@@ -71,11 +72,13 @@ describe("boxCollector", () => {
 
 describe("rollMysteryBox", () => {
   it.each([
-    // [seed, boxRolls, expected outcome] — stream values: 0.353, 0.536,
-    // 0.780, 0.906, each landing in its threshold band.
-    [0, 0, "extra-steps"],
+    // [seed, boxRolls, expected outcome] — stream values: 0.206, 0.353,
+    // 0.536, 0.780, 0.880, 0.906, each landing in its threshold band.
+    [0, 2, "extra-steps"],
+    [0, 0, "bridge"],
     [2, 2, "bridge"],
     [4, 2, "trap-sense"],
+    [0, 7, "shield"],
     [0, 1, "booby-trap"],
   ] as const)(
     "seed %i, roll #%i → %s",
@@ -169,13 +172,13 @@ describe("collection through movePieceStep", () => {
   });
 
   it("extra-steps grants 2 bonus points to the collecting piece", () => {
-    const result = collect(boxGame(0, 0));
+    const result = collect(boxGame(0, 2));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.outcome.box).toBe("extra-steps");
     expect(result.state.bonusPoints[CAT]).toBe(2);
     expect(result.state.mysteryBoxes[0].collected).toBe(true);
-    expect(result.state.boxRolls).toBe(1);
+    expect(result.state.boxRolls).toBe(3);
   });
 
   it("bridge grants the collecting piece a bridge", () => {
@@ -186,6 +189,44 @@ describe("collection through movePieceStep", () => {
     expect(
       result.state.pieces.find((p) => p.id === CAT)?.hasBridge,
     ).toBe(true);
+  });
+
+  it("shield grants the collecting piece a shield", () => {
+    const result = collect(boxGame(0, 7));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.box).toBe("shield");
+    expect(
+      result.state.pieces.find((p) => p.id === CAT)?.hasShield,
+    ).toBe(true);
+  });
+
+  it("the shield survives endTurn: it lasts until used, not until the turn ends", () => {
+    const collected = collect(boxGame(0, 7));
+    expect(collected.ok).toBe(true);
+    if (!collected.ok) return;
+    const ended = endTurn(collected.state);
+    expect(ended.ok).toBe(true);
+    if (!ended.ok) return;
+    expect(
+      ended.state.pieces.find((p) => p.id === CAT)?.hasShield,
+    ).toBe(true);
+  });
+
+  it("a shield does not protect against a booby-trap roll", () => {
+    const base = boxGame(0, 1);
+    const shielded: GameState = {
+      ...base,
+      pieces: base.pieces.map((p) =>
+        p.id === CAT ? { ...p, hasShield: true } : p,
+      ),
+    };
+    const result = collect(shielded);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.box).toBe("booby-trap");
+    expect(result.outcome.eliminated).toBe(true);
+    expect(result.outcome.shieldBlocked).toBe(false);
   });
 
   it("booby-trap eliminates the collector", () => {

@@ -80,6 +80,16 @@ describe("canNerf", () => {
   it("allows an adjacent active enemy piece", () => {
     expect(canNerf(nerfState(), "north", "south-cat")).toEqual({ ok: true });
   });
+
+  it("rejects a shielded target: a shield is never a valid nerf", () => {
+    const state = movePieceTo(nerfState(), "south-cat", { x: 10, y: 11 }, {
+      hasShield: true,
+    });
+    expect(canNerf(state, "north", "south-cat")).toEqual({
+      ok: false,
+      error: "invalid-target",
+    });
+  });
 });
 
 describe("nerfTargets", () => {
@@ -97,6 +107,16 @@ describe("nerfTargets", () => {
       "south-cat",
       "south-dog",
       "south-horse",
+    ]);
+  });
+
+  it("excludes shielded pieces", () => {
+    let state = nerfState();
+    state = movePieceTo(state, "south-dog", { x: 11, y: 10 }, {
+      hasShield: true,
+    });
+    expect(nerfTargets(state, "north").map((p) => p.id)).toEqual([
+      "south-cat",
     ]);
   });
 

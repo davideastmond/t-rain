@@ -17,7 +17,7 @@ penguin, and more — but they're all identical in how they move, so the
 game is pure tactics.
 
 **The board.** 30 × 31 tiles with a neutral row in the middle. Every game
-gets one cosmetic biome — grass, desert, or ice — but the terrain itself
+gets one cosmetic biome — grass, desert, ice, or volcano — but the terrain itself
 always matters:
 
 - **Plains** — costs 1 movement point to enter.
@@ -43,7 +43,7 @@ on the goal row, where the trap resolves before scoring.
 only the _invader_ can collect it — step a piece onto the box in enemy
 territory to roll what's inside:
 
-- **Extra steps (40%)** — +2 free movement points for that piece, this
+- **Extra steps (30%)** — +2 free movement points for that piece, this
   turn only.
 - **Bridge (25%)** — the piece can cross one water tile, but it must
   reach land the same turn or it drowns, and a water tile never scores.
@@ -51,6 +51,9 @@ territory to roll what's inside:
   tiles next to that piece are revealed to you, on collection and after
   each of its steps. Revealed traps stay on your board for good — but
   they stay live, so don't step on one later.
+- **Shield (10%)** — the piece gains a shield that eats the next trap
+  or nerf aimed at it, then it's gone. A trap it steps on fires and is
+  spent; a shielded piece can't be nerfed at all.
 - **Booby trap (10%)** — the collecting piece is eliminated.
 
 **Pickup powers.** One more hidden item sits somewhere in the middle of
@@ -105,7 +108,9 @@ A few things testing taught us, baked into how the CPU plays:
 ![The T-rain home page: local game, CPU battle lab, and online game](https://github.com/davideastmond/t-rain/blob/dev/docs/home.png?raw=true)
 
 - **Local game** — against the CPU (Normal or Hard, picked before the
-  game starts), or a friend on the same device (hotseat).
+  game starts), or a friend on the same device (hotseat). Against the
+  CPU, your win/loss record per tier is kept in this browser, and
+  rematches swap seats.
 - **Online game** — create a game from the home page and share the invite
   link. The server holds the game state, your opponent's traps stay
   hidden, and turns sync automatically. First player is random.

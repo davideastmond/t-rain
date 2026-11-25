@@ -55,6 +55,7 @@ export interface GameStartEvent {
     boxExtraStepsChance: number;
     boxBridgeChance: number;
     boxTrapSenseChance: number;
+    boxShieldChance: number;
     extraStepsPoints: number;
     waterCrossCost: number;
     pickupPowerCost: number;
@@ -86,7 +87,7 @@ export interface MoveEvent {
   poolLeft: number;
   /** Everything the step caused, in resolution order. */
   events: Array<
-    | { kind: "trap"; pos: Coord; pieceEliminated: true }
+    | { kind: "trap"; pos: Coord; pieceEliminated: boolean }
     | { kind: "box"; outcome: MysteryBoxOutcome }
     | { kind: "pickup"; power: PickupPowerKind }
     | { kind: "score"; pieceId: string; newScore: number }

@@ -113,6 +113,9 @@ export async function POST(
     // trap event is only for actual traps.
     events.push({ type: "trap-triggered", position: to, victimPieceId: pieceId });
   }
+  if (result.outcome.shieldBlocked) {
+    events.push({ type: "shield-blocked", position: to, pieceId });
+  }
   if (result.outcome.scored) {
     events.push({
       type: "scored",

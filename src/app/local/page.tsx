@@ -3,10 +3,10 @@
 // The setup screen — Step 4 turns the board preview into the first phase
 // of an actual game.
 //
-// You play South (red, bottom of the board) against a North opponent whose
-// setup is auto-placed by the engine and whose traps you never see — the
-// page enforces that by simply never handing North's untriggered traps to
-// the Board component. All placement rules come from the engine
+// You play one side (South by default; rematches swap seats) against a
+// CPU opponent whose setup is auto-placed by the engine and whose traps
+// you never see — the page enforces that by simply never handing the
+// CPU's untriggered traps to the Board component. All placement rules come from the engine
 // (src/lib/game/setup.ts): this page asks it "may this go here?" on every
 // click and shows the reason when the answer is no, so the UI and the
 // rules can never drift apart.
@@ -17,15 +17,16 @@
 // visibility follows whose turn it is, the same filter an online client
 // would apply.
 //
-// Step 7 adds a CPU opponent: when enabled, North's turns are played by a
+// Step 7 adds a CPU opponent: when enabled, the CPU's turns are played by a
 // greedy heuristic (src/lib/game/cpu.ts) that only ever sees the sanitized
-// per-player view — North's untriggered traps stay hidden from you, and the
-// CPU can't see yours.
+// per-player view — the CPU's untriggered traps stay hidden from you, and it
+// can't see yours.
 
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -94,8 +95,18 @@ import {
   fillSetupDraft,
   isInPieceZone,
   isInTrapZone,
+  otherPlayer,
 } from "@/lib/game/setup";
 import { suggestChokeTraps } from "@/lib/game/setup-choke";
+import {
+  emptyLadder,
+  emptyRecord,
+  getLadderSnapshot,
+  recordResult,
+  saveLadder,
+  subscribeLadder,
+  type LadderRecord,
+} from "@/lib/ladder";
 import {
   type CharacterId,
   type GameState,
@@ -108,9 +119,6 @@ import {
   type Trap,
 } from "@/lib/game/types";
 
-const LOCAL_PLAYER: PlayerId = "south";
-const OPPONENT: PlayerId = "north";
-const CPU_PLAYER: PlayerId = "north";
 const FIRST_SEED = 42;
 /** Pause between CPU steps so its turn is watchable, not instantaneous. */
 const CPU_STEP_DELAY_MS = 350;
@@ -132,6 +140,8 @@ function boxMessage(who: string, box: MysteryBoxOutcome): string {
       return `🎁 ${who} opened a mystery box: 🌉 a bridge! It can cross one water tile.`;
     case "trap-sense":
       return `🎁 ${who} opened a mystery box: 🔍 trap sense! Nearby traps are revealed to it this turn.`;
+    case "shield":
+      return `🎁 ${who} opened a mystery box: 🛡️ shield! It eats the next trap or nerf.`;
     case "booby-trap":
       return `🎁 ${who} opened a mystery box — 💥 booby trap!`;
   }
@@ -172,6 +182,15 @@ function unclaimedPickupNote(pickups: Pickup[]): string | null {
   return `An unclaimed ${pickupPowerLabel(pickup.kind)} pickup sat at (${pickup.position.x}, ${pickup.position.y}).`;
 }
 
+/** "3–7 · win streak W2 · best W4" — the streak parts only when they
+    say something (a lone W1 best is noise). */
+function ladderSummary(record: LadderRecord): string {
+  const parts = [`${record.wins}–${record.losses}`];
+  if (record.streak > 0) parts.push(`win streak W${record.streak}`);
+  if (record.bestStreak > 1) parts.push(`best W${record.bestStreak}`);
+  return parts.join(" · ");
+}
+
 export default function LocalGamePage() {
   const [seedText, setSeedText] = useState(String(FIRST_SEED));
   const [game, setGame] = useState<GameState>(() => createGame(FIRST_SEED));
@@ -198,6 +217,20 @@ export default function LocalGamePage() {
   const [gameId, setGameId] = useState(0);
   const [cpuMode, setCpuMode] = useState(true);
   const [difficulty, setDifficulty] = useState<CpuDifficulty>("normal");
+  /** Which seat you play: South by default, swapped by every rematch. */
+  const [humanSeat, setHumanSeat] = useState<PlayerId>("south");
+  const cpuSeat: PlayerId = otherPlayer(humanSeat);
+  /** Local ladder (this browser only), read through the external store
+      so the server snapshot (empty) and the stored record never
+      disagree at hydration — same pattern as the mute preference. */
+  const ladder = useSyncExternalStore(
+    subscribeLadder,
+    getLadderSnapshot,
+    emptyLadder,
+  );
+  /** Game instance the ladder already recorded, so a finished game
+      counts exactly once however often the page re-renders. */
+  const recordedForRef = useRef<number | null>(null);
   // Sound on by default; the persisted preference takes over after
   // hydration (the server snapshot is always "on", so no mismatch).
   const muted = useSyncExternalStore(subscribeMuted, isMuted, () => false);
@@ -205,28 +238,41 @@ export default function LocalGamePage() {
     setMuted(!muted);
   }
   /** Win/lose stinger for a finished game, delayed so it lands after
-      the step's own sound. In CPU mode the human is South; in hotseat
-      both sides are human, so any win celebrates. */
+      the step's own sound. In CPU mode the human is the human seat; in
+      hotseat both sides are human, so any win celebrates. */
   const playGameEndSound = useCallback(
     (state: GameState) => {
       if (state.phase !== "finished" || !state.winner) return;
       const winner = state.winner;
       window.setTimeout(() => {
-        playSound(!cpuMode || winner === LOCAL_PLAYER ? "win" : "lose");
+        playSound(!cpuMode || winner === humanSeat ? "win" : "lose");
       }, 300);
     },
-    [cpuMode],
+    [cpuMode, humanSeat],
   );
 
   const palette = BIOME_PALETTES[game.biome];
-  const southApplied = game.pieces.some((p) => p.owner === LOCAL_PLAYER);
+  const humanApplied = game.pieces.some((p) => p.owner === humanSeat);
   const inSetup = game.phase === "setup";
   const playing = game.phase === "playing";
   const finished = game.phase === "finished";
-  const cpuTurn = cpuMode && playing && game.currentPlayer === CPU_PLAYER;
+  const cpuTurn = cpuMode && playing && game.currentPlayer === cpuSeat;
   const selectedPiece = selectedPieceId
     ? getPiece(game, selectedPieceId)
     : undefined;
+
+  // A finished CPU game records once, guarded by the game instance —
+  // "Replay this board" reuses the seed, so the seed alone can't tell
+  // two games apart. Hotseat games never count.
+  useEffect(() => {
+    if (!finished || !cpuMode || !game.winner) return;
+    if (recordedForRef.current === gameId) return;
+    const winner = game.winner;
+    recordedForRef.current = gameId;
+    saveLadder(
+      recordResult(getLadderSnapshot(), difficulty, winner === humanSeat),
+    );
+  }, [finished, cpuMode, game.winner, gameId, difficulty, humanSeat]);
 
   const draftPieceCount = Object.keys(draftPieces).length;
   const neutralTrapCount = draftTraps.filter((p) => p.y === NEUTRAL_ROW).length;
@@ -239,17 +285,18 @@ export default function LocalGamePage() {
   // pieces once applied. North's untriggered traps are filtered out here —
   // this one expression is the hidden-information rule.
   const displayPieces: Piece[] = useMemo(() => {
-    if (southApplied) return game.pieces;
+    if (humanApplied) return game.pieces;
     return ALL_CHARACTERS.filter((c) => draftPieces[c]).map((character) => ({
-      id: `${LOCAL_PLAYER}-${character}`,
+      id: `${humanSeat}-${character}`,
       character,
-      owner: LOCAL_PLAYER,
+      owner: humanSeat,
       position: draftPieces[character]!,
       status: "active" as const,
       hasBridge: false,
       hasTrapSense: false,
+      hasShield: false,
     }));
-  }, [game.pieces, southApplied, draftPieces]);
+  }, [game.pieces, humanApplied, draftPieces, humanSeat]);
 
   // Whose eyes the board is drawn through. While waiting to start, you
   // (South) review your own setup. During hotseat play, visibility
@@ -257,12 +304,12 @@ export default function LocalGamePage() {
   // information. Against the CPU, visibility is pinned to you — North's
   // secrets stay hidden all game.
   const visibleOwner: PlayerId =
-    cpuMode || inSetup ? LOCAL_PLAYER : game.currentPlayer;
+    cpuMode || inSetup ? humanSeat : game.currentPlayer;
 
   const displayTraps: Trap[] = useMemo(() => {
-    if (!southApplied) {
+    if (!humanApplied) {
       return draftTraps.map((position) => ({
-        owner: LOCAL_PLAYER,
+        owner: humanSeat,
         position,
         triggered: false,
       }));
@@ -282,7 +329,7 @@ export default function LocalGamePage() {
         t.triggered ||
         revealedKeys.has(tileKey(t.position)),
     );
-  }, [game.traps, game.revealedTraps, visibleOwner, southApplied, draftTraps, finished]);
+  }, [game.traps, game.revealedTraps, visibleOwner, humanApplied, humanSeat, draftTraps, finished]);
 
   // Which of the drawn traps are there *because* trap sense revealed
   // them to the viewer — Board labels those "Revealed trap".
@@ -315,22 +362,22 @@ export default function LocalGamePage() {
       }
       return keys;
     }
-    if (southApplied) return keys;
+    if (humanApplied) return keys;
 
     if (mode === "pieces") {
       const others = ALL_CHARACTERS.filter(
         (c) => c !== selectedCharacter && draftPieces[c],
       ).map((c) => draftPieces[c]!);
       for (const tile of game.tiles) {
-        if (!isInPieceZone(LOCAL_PLAYER, tile.position)) continue;
-        if (canPlacePieceAt(game, LOCAL_PLAYER, tile.position, others).ok) {
+        if (!isInPieceZone(humanSeat, tile.position)) continue;
+        if (canPlacePieceAt(game, humanSeat, tile.position, others).ok) {
           keys.add(tileKey(tile.position));
         }
       }
     } else {
       for (const tile of game.tiles) {
-        if (!isInTrapZone(LOCAL_PLAYER, tile.position)) continue;
-        if (canPlaceTrapAt(game, LOCAL_PLAYER, tile.position, draftTraps).ok) {
+        if (!isInTrapZone(humanSeat, tile.position)) continue;
+        if (canPlaceTrapAt(game, humanSeat, tile.position, draftTraps).ok) {
           keys.add(tileKey(tile.position));
         }
       }
@@ -343,7 +390,8 @@ export default function LocalGamePage() {
     selectedPieceId,
     draftPieces,
     draftTraps,
-    southApplied,
+    humanApplied,
+    humanSeat,
     playing,
   ]);
 
@@ -375,6 +423,19 @@ export default function LocalGamePage() {
     setGameId((id) => id + 1);
   }
 
+  /** Rematch from the game-over screen: a fresh game with seats swapped,
+      so a series alternates the stronger South seat and the weaker North
+      one (the battle lab measured North as the weaker seat). */
+  function rematch(nextSeed: number) {
+    setHumanSeat((seat) => otherPlayer(seat));
+    newGame(nextSeed);
+  }
+
+  /** Clear the shown tier's record (local only — nothing leaves the browser). */
+  function resetLadderTier() {
+    saveLadder({ ...getLadderSnapshot(), [difficulty]: emptyRecord() });
+  }
+
   function onSeedSubmit(event: React.FormEvent) {
     event.preventDefault();
     const parsed = Number.parseInt(seedText, 10);
@@ -382,7 +443,7 @@ export default function LocalGamePage() {
   }
 
   function handleTileClick(position: Position) {
-    if (southApplied || playing) return;
+    if (humanApplied || playing) return;
     setMessage(null);
 
     if (mode === "pieces") {
@@ -404,7 +465,7 @@ export default function LocalGamePage() {
       const others = ALL_CHARACTERS.filter(
         (c) => c !== selectedCharacter && draftPieces[c],
       ).map((c) => draftPieces[c]!);
-      const check = canPlacePieceAt(game, LOCAL_PLAYER, position, others);
+      const check = canPlacePieceAt(game, humanSeat, position, others);
       if (!check.ok) {
         setMessage(SETUP_ERROR_MESSAGES[check.error]);
         playSound("invalid");
@@ -431,7 +492,7 @@ export default function LocalGamePage() {
       playSound("place");
       return;
     }
-    const check = canPlaceTrapAt(game, LOCAL_PLAYER, position, draftTraps);
+    const check = canPlaceTrapAt(game, humanSeat, position, draftTraps);
     if (!check.ok) {
       setMessage(SETUP_ERROR_MESSAGES[check.error]);
       playSound("invalid");
@@ -446,7 +507,7 @@ export default function LocalGamePage() {
       character,
       position: draftPieces[character]!,
     }));
-    const result = applySetup(game, LOCAL_PLAYER, placements, draftTraps);
+    const result = applySetup(game, humanSeat, placements, draftTraps);
     if (!result.ok) {
       setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
@@ -463,7 +524,7 @@ export default function LocalGamePage() {
    */
   function fillMine() {
     setPreBulkDraft({ pieces: draftPieces, traps: draftTraps });
-    const filled = fillSetupDraft(game, LOCAL_PLAYER, draftPieces, draftTraps);
+    const filled = fillSetupDraft(game, humanSeat, draftPieces, draftTraps);
     setDraftPieces(filled.pieces);
     setDraftTraps(filled.traps);
     playSound("place");
@@ -493,7 +554,7 @@ export default function LocalGamePage() {
     const piecePositions = ALL_CHARACTERS.filter((c) => draftPieces[c]).map(
       (c) => draftPieces[c]!,
     );
-    setDraftTraps(suggestChokeTraps(game, LOCAL_PLAYER, piecePositions));
+    setDraftTraps(suggestChokeTraps(game, humanSeat, piecePositions));
     playSound("place");
     setMessage(
       "Suggested trap spots on the board's narrow crossings — Undo brings back your traps.",
@@ -504,7 +565,7 @@ export default function LocalGamePage() {
     // North's setup comes from the selected difficulty tier (Normal:
     // auto-placed; Hard: choke-point traps) — its traps stay hidden
     // because displayTraps never includes them.
-    const result = chooseDifficultySetup(difficulty, game, OPPONENT);
+    const result = chooseDifficultySetup(difficulty, game, cpuSeat);
     if (!result.ok) {
       setMessage(SETUP_ERROR_MESSAGES[result.error]);
       return;
@@ -676,6 +737,14 @@ export default function LocalGamePage() {
         (result.state.phase === "finished"
           ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}!`
           : `🎉 ${who} crossed! ${playerLabel(selectedPiece.owner)}: ${result.state.scores[selectedPiece.owner]}/${PIECES_TO_WIN}.${earnedToken ? " +1 ⚡ nerf token (usable next turn)." : ""}`) +
+          (result.outcome.shieldBlocked
+            ? ` 🛡️ Its shield absorbed the goal-row trap — the trap is spent.`
+            : "") +
+          revealNote(result.outcome.revealed),
+      );
+    } else if (result.outcome.shieldBlocked) {
+      setMessage(
+        `🛡️ ${who}'s shield absorbed the trap! The trap is spent.` +
           revealNote(result.outcome.revealed),
       );
     } else if (result.outcome.box) {
@@ -704,7 +773,7 @@ export default function LocalGamePage() {
     const expiredPowers = game.heldPowers[game.currentPlayer];
     const showExpiry =
       expiredPowers.length > 0 &&
-      !(cpuMode && game.currentPlayer === CPU_PLAYER);
+      !(cpuMode && game.currentPlayer === cpuSeat);
     setGame(result.state);
     setSelectedPieceId(null);
     setNerfArmed(false);
@@ -734,7 +803,7 @@ export default function LocalGamePage() {
     if (playing) {
       // Your clicks do nothing while the CPU is mid-turn.
       if (!cpuTurn) handlePlayClick(position);
-    } else if (!southApplied) {
+    } else if (!humanApplied) {
       handleTileClick(position);
     }
   }
@@ -749,8 +818,8 @@ export default function LocalGamePage() {
     const timer = window.setTimeout(() => {
       const action = chooseDifficultyAction(
         difficulty,
-        sanitizeForPlayer(game, CPU_PLAYER),
-        CPU_PLAYER,
+        sanitizeForPlayer(game, cpuSeat),
+        cpuSeat,
       );
       if (!action) {
         const done = endTurn(game);
@@ -761,20 +830,20 @@ export default function LocalGamePage() {
           if (drowned) playSound("drown");
           playGameEndSound(done.state);
           if (drowned) {
-            const who = `${CHARACTERS[drowned.character].emoji} North ${CHARACTERS[drowned.character].label}`;
+            const who = `${CHARACTERS[drowned.character].emoji} ${playerLabel(cpuSeat)} ${CHARACTERS[drowned.character].label}`;
             setMessage(
               done.state.phase === "finished"
                 ? `🌊 ${who} drowned — it ended its turn on water, and that ends the game!`
                 : `🌊 ${who} drowned — it ended its turn on water!`,
             );
           } else {
-            setMessage("North (CPU) ends its turn.");
+            setMessage(`${playerLabel(cpuSeat)} (CPU) ends its turn.`);
           }
         }
         return;
       }
       if (action.kind === "nerf") {
-        const result = applyNerf(game, CPU_PLAYER, action.targetPieceId);
+        const result = applyNerf(game, cpuSeat, action.targetPieceId);
         if (!result.ok) {
           const done = endTurn(game);
           if (done.ok) {
@@ -791,16 +860,16 @@ export default function LocalGamePage() {
         const who = `${CHARACTERS[victim.character].emoji} ${CHARACTERS[victim.character].label}`;
         setMessage(
           result.state.phase === "finished"
-            ? `⚡ North's nerf eliminates your ${who} — and that ends the game!`
-            : `⚡ North's nerf eliminates your ${who}!`,
+            ? `⚡ ${playerLabel(cpuSeat)}'s nerf eliminates your ${who} — and that ends the game!`
+            : `⚡ ${playerLabel(cpuSeat)}'s nerf eliminates your ${who}!`,
         );
         return;
       }
       if (action.kind === "use-pickup") {
         const result =
           action.power === "trap"
-            ? applyPickupTrap(game, CPU_PLAYER, action.position)
-            : applyTerraform(game, CPU_PLAYER, action.position);
+            ? applyPickupTrap(game, cpuSeat, action.position)
+            : applyTerraform(game, cpuSeat, action.position);
         if (!result.ok) {
           const done = endTurn(game);
           if (done.ok) {
@@ -815,7 +884,7 @@ export default function LocalGamePage() {
           // Public board state: the tile visibly changes, so say so.
           playSound("terraform");
           setMessage(
-            `🌍 North terraformed (${action.position.x}, ${action.position.y}) into plains!`,
+            `🌍 ${playerLabel(cpuSeat)} terraformed (${action.position.x}, ${action.position.y}) into plains!`,
           );
         }
         // A trap placement is silent: no message, no sound — like a setup
@@ -839,7 +908,7 @@ export default function LocalGamePage() {
       setSelectedPieceId(null);
 
       const piece = getPiece(game, action.pieceId)!;
-      const who = `${CHARACTERS[piece.character].emoji} North ${CHARACTERS[piece.character].label}`;
+      const who = `${CHARACTERS[piece.character].emoji} ${playerLabel(cpuSeat)} ${CHARACTERS[piece.character].label}`;
       if (result.outcome.eliminated) {
         if (result.outcome.box === "booby-trap") {
           setMessage(
@@ -856,18 +925,23 @@ export default function LocalGamePage() {
         }
       } else if (result.outcome.scored) {
         setMessage(
-          result.state.phase === "finished"
-            ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}! North wins.`
-            : `🎉 ${who} crossed! North: ${result.state.scores.north}/${PIECES_TO_WIN}.`,
+          (result.state.phase === "finished"
+            ? `🎉 ${who} crossed — that's ${PIECES_TO_WIN}! ${playerLabel(cpuSeat)} wins.`
+            : `🎉 ${who} crossed! ${playerLabel(cpuSeat)}: ${result.state.scores[cpuSeat]}/${PIECES_TO_WIN}.`) +
+            (result.outcome.shieldBlocked
+              ? ` 🛡️ Its shield absorbed the goal-row trap — the trap is spent.`
+              : ""),
         );
+      } else if (result.outcome.shieldBlocked) {
+        setMessage(`🛡️ ${who}'s shield absorbed the trap! The trap is spent.`);
       } else if (result.outcome.box) {
         setMessage(boxMessage(who, result.outcome.box));
       } else {
-        setMessage("North (CPU) is thinking…");
+        setMessage(`${playerLabel(cpuSeat)} (CPU) is thinking…`);
       }
     }, CPU_STEP_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [game, cpuMode, difficulty, playing, cpuTurn, playGameEndSound]);
+  }, [game, cpuMode, cpuSeat, difficulty, playing, cpuTurn, playGameEndSound]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center gap-5 bg-neutral-950 px-4 py-10 text-neutral-100">
@@ -934,7 +1008,7 @@ export default function LocalGamePage() {
               onChange={(event) => setCpuMode(event.target.checked)}
               className="accent-emerald-500"
             />
-            🤖 CPU plays North
+            🤖 CPU plays {playerLabel(cpuSeat)}
           </label>
         )}
         {!playing && !finished && cpuMode && (
@@ -955,15 +1029,30 @@ export default function LocalGamePage() {
         )}
       </div>
 
-      {!playing && !southApplied && (
+      {!playing && !finished && cpuMode && (
+        <p className="text-sm text-neutral-300">
+          vs {CPU_DIFFICULTIES[difficulty].label}:{" "}
+          {ladderSummary(ladder[difficulty])} ·{" "}
+          <button
+            type="button"
+            onClick={resetLadderTier}
+            className="underline decoration-neutral-600 underline-offset-2 transition hover:text-neutral-100"
+          >
+            Reset
+          </button>
+        </p>
+      )}
+
+      {!playing && !humanApplied && (
         <>
           <p className="text-center text-sm text-neutral-300">
             You are{" "}
             <span
               className="font-semibold"
-              style={{ color: PLAYER_COLORS[LOCAL_PLAYER] }}
+              style={{ color: PLAYER_COLORS[humanSeat] }}
             >
-              South (red)
+              {playerLabel(humanSeat)} (
+              {humanSeat === "north" ? "blue" : "red"})
             </span>
             . Place {PIECES_PER_PLAYER} pieces in your back 3 rows, then{" "}
             {TRAPS_PER_PLAYER} traps in your zone + the neutral row (max{" "}
@@ -1019,13 +1108,13 @@ export default function LocalGamePage() {
           playing && selectedPiece ? tileKey(selectedPiece.position) : undefined
         }
         onTileClick={
-          finished || (southApplied && inSetup) || cpuTurn
+          finished || (humanApplied && inSetup) || cpuTurn
             ? undefined
             : handleBoardClick
         }
       />
 
-      {!playing && !southApplied && (
+      {!playing && !humanApplied && (
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
@@ -1082,13 +1171,13 @@ export default function LocalGamePage() {
         </div>
       )}
 
-      {southApplied && inSetup && (
+      {humanApplied && inSetup && (
         <button
           type="button"
           onClick={startGame}
           className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
         >
-          ▶ Start game — North sets up in secret
+          ▶ Start game — {playerLabel(cpuSeat)} sets up in secret
         </button>
       )}
 
@@ -1125,6 +1214,12 @@ export default function LocalGamePage() {
                 </span>{" "}
                 wins the game!
               </p>
+              {cpuMode && (
+                <p className="max-w-md text-sm text-neutral-300">
+                  vs {CPU_DIFFICULTIES[difficulty].label}:{" "}
+                  {ladderSummary(ladder[difficulty])}
+                </p>
+              )}
               <p className="max-w-md text-sm text-neutral-300">
                 {game.winner && game.scores[game.winner] >= PIECES_TO_WIN
                   ? `${PIECES_TO_WIN} pieces crossed the board — settled in ${turnCount} turns.`
@@ -1195,11 +1290,15 @@ export default function LocalGamePage() {
                   </div>
                 ))}
               </div>
+              <p className="max-w-md text-sm text-neutral-400">
+                Rematch swaps seats — next game you play{" "}
+                {playerLabel(otherPlayer(humanSeat))}.
+              </p>
               <div className="flex flex-wrap justify-center gap-2">
                 <button
                   type="button"
                   onClick={() =>
-                    newGame(Math.floor(Math.random() * 1_000_000_000))
+                    rematch(Math.floor(Math.random() * 1_000_000_000))
                   }
                   className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
                 >
@@ -1207,7 +1306,7 @@ export default function LocalGamePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => newGame(game.seed)}
+                  onClick={() => rematch(game.seed)}
                   className="rounded-full bg-neutral-800 px-5 py-2 text-sm transition hover:bg-neutral-700"
                 >
                   ↩ Replay this board
@@ -1245,6 +1344,7 @@ export default function LocalGamePage() {
                       <> + {game.bonusPoints[selectedPiece.id]}🎁 free</>
                     )}
                     {selectedPiece.hasTrapSense && <> · 🔍 trap sense</>}
+                    {selectedPiece.hasShield && <> · 🛡️ shield</>}
                   </>
                 )}
                 {nerfArmed && (
@@ -1283,7 +1383,7 @@ export default function LocalGamePage() {
               </p>
               {cpuTurn ? (
                 <p className="animate-pulse text-sm text-neutral-300">
-                  🤖 North (CPU) is thinking…
+                  🤖 {playerLabel(cpuSeat)} (CPU) is thinking…
                 </p>
               ) : (
                 <div className="flex flex-wrap justify-center gap-2">
@@ -1349,7 +1449,7 @@ export default function LocalGamePage() {
               )}
               <p className="max-w-md text-xs text-neutral-500">
                 {cpuMode
-                  ? "You play South against the CPU. Its untriggered traps stay hidden from you, and it can't see yours — it plays from the same limited view you have."
+                  ? `You play ${playerLabel(humanSeat)} against the CPU. Its untriggered traps stay hidden from you, and it can't see yours — it plays from the same limited view you have.`
                   : "Hotseat: both sides play on this screen, and trap visibility follows whose turn it is — the player to move sees only their own untriggered traps."}
               </p>
             </>
