@@ -193,6 +193,14 @@ export default function Board({
           const trap = trapByTile.get(index);
           const nerfVictim = nerfMarkerByTile.get(index);
           const box = boxByTile.get(index);
+          // Water drifts (globals.css): sideways everywhere, diagonal
+          // with a glow pulse on volcano lava.
+          const flowClass =
+            tile.terrain === "water"
+              ? biome === "volcano"
+                ? "animate-lava-flow"
+                : "animate-water-flow"
+              : "";
 
           return (
             <div
@@ -200,7 +208,7 @@ export default function Board({
               onClick={
                 onTileClick ? () => onTileClick(tile.position) : undefined
               }
-              className={`relative aspect-square rounded-[2px] ${
+              className={`relative aspect-square rounded-[2px] ${flowClass} ${
                 onTileClick ? "cursor-pointer" : ""
               }`}
               style={{

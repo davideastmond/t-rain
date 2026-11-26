@@ -57,6 +57,32 @@ describe("Board rendering", () => {
     expect(tile.style.backgroundSize).toBe("24px 24px");
   });
 
+  it("animates water tiles but not land tiles", () => {
+    const water = tiles.find((t) => t.terrain === "water")!;
+    const plains = tiles.find((t) => t.terrain === "plains")!;
+    render(<Board tiles={tiles} biome="grass" piecesKey="test" />);
+    expect(
+      screen
+        .getByTitle(`Water (${water.position.x}, ${water.position.y})`)
+        .classList.contains("animate-water-flow"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByTitle(`Grass (${plains.position.x}, ${plains.position.y})`)
+        .classList.contains("animate-water-flow"),
+    ).toBe(false);
+  });
+
+  it("gives volcano water the lava flow instead of the water flow", () => {
+    const water = tiles.find((t) => t.terrain === "water")!;
+    render(<Board tiles={tiles} biome="volcano" piecesKey="test" />);
+    const tile = screen.getByTitle(
+      `Lava (${water.position.x}, ${water.position.y})`,
+    );
+    expect(tile.classList.contains("animate-lava-flow")).toBe(true);
+    expect(tile.classList.contains("animate-water-flow")).toBe(false);
+  });
+
   it("draws active pieces by character and hides eliminated ones", () => {
     render(
       <Board

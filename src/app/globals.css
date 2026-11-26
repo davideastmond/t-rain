@@ -49,8 +49,55 @@ body {
   animation: board-shake 0.45s ease-in-out;
 }
 
+/* Water and lava tiles drift (Board.tsx adds the class by terrain).
+   The textures repeat every 24px, so sliding by exactly one tile
+   loops with no jump. Water flows sideways; lava flows diagonally
+   and slower, with a gentle brightness pulse so the cracks read as
+   glowing. */
+@keyframes drift-x {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 0;
+  }
+}
+
+@keyframes drift-diag {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 24px;
+  }
+}
+
+@keyframes lava-glow {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.12);
+  }
+}
+
+.animate-water-flow {
+  animation: drift-x 5s linear infinite;
+}
+
+.animate-lava-flow {
+  animation:
+    drift-diag 9s linear infinite,
+    lava-glow 3s ease-in-out infinite alternate;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-board-shake {
+    animation: none;
+  }
+
+  .animate-water-flow,
+  .animate-lava-flow {
     animation: none;
   }
 }
