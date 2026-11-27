@@ -27,6 +27,15 @@ export function emptyLadder(): Ladder {
   return { normal: emptyRecord(), hard: emptyRecord() };
 }
 
+/**
+ * Shared empty ladder for the server snapshot: useSyncExternalStore
+ * requires getServerSnapshot to return the same value on every call,
+ * and emptyLadder() builds a fresh object each time — passing it bare
+ * logs "The result of getServerSnapshot should be cached" in dev.
+ * Never mutated (recordResult and saveLadder always build new ladders).
+ */
+export const EMPTY_LADDER: Ladder = emptyLadder();
+
 /** Record one finished game. Pure: returns a new ladder, never mutates. */
 export function recordResult(
   ladder: Ladder,

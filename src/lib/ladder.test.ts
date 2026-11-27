@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  EMPTY_LADDER,
   emptyLadder,
   emptyRecord,
   getLadderSnapshot,
@@ -112,6 +113,16 @@ describe("loadLadder / saveLadder", () => {
       normal: { wins: 2, losses: 1, streak: 0, bestStreak: 2 },
       hard: emptyRecord(),
     });
+  });
+});
+
+describe("EMPTY_LADDER", () => {
+  it("is an empty ladder, shared by reference for the server snapshot", () => {
+    // useSyncExternalStore requires getServerSnapshot to return the
+    // same reference on every call — a fresh emptyLadder() each time
+    // logs "The result of getServerSnapshot should be cached" in dev.
+    expect(EMPTY_LADDER).toEqual(emptyLadder());
+    expect(EMPTY_LADDER).toBe(EMPTY_LADDER);
   });
 });
 

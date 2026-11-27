@@ -99,7 +99,7 @@ import {
 } from "@/lib/game/setup";
 import { suggestChokeTraps } from "@/lib/game/setup-choke";
 import {
-  emptyLadder,
+  EMPTY_LADDER,
   emptyRecord,
   getLadderSnapshot,
   recordResult,
@@ -226,7 +226,7 @@ export default function LocalGamePage() {
   const ladder = useSyncExternalStore(
     subscribeLadder,
     getLadderSnapshot,
-    emptyLadder,
+    () => EMPTY_LADDER,
   );
   /** Game instance the ladder already recorded, so a finished game
       counts exactly once however often the page re-renders. */
